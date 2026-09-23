@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#065f46">
-<title>Mi Negocio del Hogar</title>
+<title>Variedades J&amp;T</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body{-webkit-tap-highlight-color:transparent}
@@ -36,7 +36,7 @@ const Store = {
   save(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { alert('No se pudo guardar en este teléfono.'); } }
 };
 const seed = () => ({
-  cfg: {nombre: 'Mi Negocio del Hogar', rnc: '', tel: '', itbis: 18, seq: 1},
+  cfg: {nombre: 'Variedades J&T', rnc: '', tel: '', itbis: 18, seq: 1},
   productos: [
     {id: 'p1', nombre: 'Lámpara de Mesa', cat: 'Iluminación', costo: 450, precio: 850, stock: 12, min: 3},
     {id: 'p2', nombre: 'Organizador de Cocina', cat: 'Cocina', costo: 300, precio: 600, stock: 8, min: 4},
@@ -46,7 +46,9 @@ const seed = () => ({
 });
 let D = Object.assign(seed(), Store.load() || {});
 D.cfg = Object.assign(seed().cfg, D.cfg);
-const save = () => Store.save(D);
+if (D.cfg.nombre === 'Mi Negocio del Hogar') D.cfg.nombre = 'Variedades J&T';
+let syncT;
+const save = () => { Store.save(D); clearTimeout(syncT); if (D.cfg.nubeUrl) syncT = setTimeout(() => nubePush(false), 4000); };
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 
 /* ===== UTILIDADES ===== */
@@ -69,22 +71,34 @@ const fld = (id, l, v, t = 'text') => `<label class="block text-sm font-semibold
 /* ===== ESTADO DE LA INTERFAZ ===== */
 const TABS = [['inicio', '🏠', 'Inicio'], ['vender', '🛒', 'Vender'], ['inventario', '📦', 'Inventario'], ['gastos', '💸', 'Gastos']];
 let tab = 'inicio', cart = [], form = null;
-let V = {bq: '', qn: '', qc: 1, qp: '', qk: '', q: 1, cliente: '', estado: 'Pagado', dias: 15, metodo: 'Efectivo', itbis: false, nom: '', tel: ''};
+let V = {per: 'mes', ver: false, bq: '', qn: '', qc: 1, qp: '', qk: '', q: 1, cliente: '', estado: 'Pagado', dias: 15, metodo: 'Efectivo', itbis: false, nom: '', tel: ''};
 
 /* ===== VISTAS ===== */
+const detalle = v => `<div class="mt-2 rounded-xl bg-slate-50 p-3 text-sm">
+  <div class="text-xs text-slate-500 mb-1">${v.num}, ${fd(v.fecha)}</div>
+  ${v.items.map(i => `<div class="flex justify-between py-0.5"><span>${i.cant} × ${esc(i.nombre)}</span><span>${R(i.cant * i.precio)}</span></div>`).join('')}
+  ${v.itbis ? `<div class="flex justify-between text-slate-500"><span>ITBIS</span><span>${R(v.itbis)}</span></div>` : ''}
+  <div class="flex justify-between font-bold border-t mt-1 pt-1"><span>Total</span><span>${R(v.total)}</span></div></div>`;
+
+const PER = {hoy: ['Hoy', 'de Hoy'], sem: ['7 días', 'de 7 días'], mes: ['Mes', 'del Mes'], anio: ['Año', 'del Año']};
+const enPer = f => V.per === 'hoy' ? f === hoy() : V.per === 'sem' ? f >= sumar(hoy(), -6) : V.per === 'mes' ? f.startsWith(mes()) : f.startsWith(hoy().slice(0, 4));
+
 function vInicio() {
-  const m = mes(), h = hoy(), vs = D.ventas.filter(v => v.fecha.startsWith(m));
-  const ven = vs.reduce((s, v) => s + v.sub, 0);
-  const cos = vs.reduce((s, v) => s + v.items.reduce((a, i) => a + i.cant * i.costo, 0), 0);
-  const gas = D.gastos.filter(g => g.fecha.startsWith(m)).reduce((s, g) => s + g.monto, 0);
-  const com = D.compras.filter(c => c.fecha.startsWith(m)).reduce((s, c) => s + c.cant * c.costo, 0);
-  const gan = ven - cos - gas;
-  const cx = D.ventas.filter(v => v.estado === 'Por Cobrar').sort((a, b) => a.vence.localeCompare(b.vence));
+  const h = hoy(), ok = D.ventas.filter(v => v.estado !== 'Cancelada'), vs = ok.filter(v => enPer(v.fecha));
+  const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
+  const ven = sum(vs, v => v.sub), cos = sum(vs, v => sum(v.items, i => i.cant * i.costo));
+  const gas = sum(D.gastos.filter(x => enPer(x.fecha)), x => x.monto);
+  const com = sum(D.compras.filter(c => enPer(c.fecha)), c => c.cant * c.costo);
+  const bruta = ven - cos, gan = bruta - gas;
+  const cx = ok.filter(v => v.estado === 'Por Cobrar').sort((a, b) => a.vence.localeCompare(b.vence));
   const vc = cx.filter(v => v.vence < h), bajo = D.productos.filter(p => p.stock <= p.min);
-  const inv = D.productos.reduce((s, p) => s + p.stock * p.costo, 0);
-  const top = {};
-  vs.forEach(v => v.items.forEach(i => top[i.nombre] = (top[i.nombre] || 0) + i.cant));
-  const tp = Object.entries(top).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const pag = vs.filter(v => v.estado === 'Pagado');
+  const efe = sum(pag.filter(v => v.metodo === 'Efectivo'), v => v.total), tra = sum(pag.filter(v => v.metodo === 'Transferencia'), v => v.total);
+  const dias = [...Array(7)].map((_, k) => sumar(h, k - 6));
+  const vd = dias.map(d => sum(ok.filter(v => v.fecha === d), v => v.sub)), mx = Math.max(...vd, 1);
+  const tp = {};
+  vs.forEach(v => v.items.forEach(i => { const t = tp[i.nombre] || (tp[i.nombre] = {q: 0, g: 0}); t.q += i.cant; t.g += i.cant * (i.precio - i.costo); }));
+  const top = Object.entries(tp).sort((a, b) => b[1].g - a[1].g).slice(0, 5);
   const big = (t, v, c) => `<div class="card"><div class="text-sm text-slate-500">${t}</div><div class="text-3xl font-extrabold ${c}">${R(v)}</div></div>`;
   const mini = (t, v) => `<div class="card"><div class="text-xs text-slate-500">${t}</div><b>${v}</b></div>`;
   const cxHtml = cx.map(v => {
@@ -92,20 +106,26 @@ function vInicio() {
     const wa = c && c.tel ? `<a class="btn2" href="https://wa.me/1${c.tel.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent('Hola ' + c.nombre + ', le recordamos su pendiente de ' + R(v.total) + ' (' + v.num + ').')}">WhatsApp</a>` : '';
     return `<div class="border-b py-3"><div class="flex justify-between"><b>${esc(c ? c.nombre : 'Cliente')}</b><b>${R(v.total)}</b></div>
       <div class="text-sm text-slate-500">${v.num}, vence ${fd(v.vence)} ${venc ? badge('Vencida', 'bg-rose-100 text-rose-700') : ''}</div>
+      <details class="mt-2"><summary class="btn2 cursor-pointer">Ver factura (qué compró)</summary>${detalle(v)}<button class="btn2 w-full mt-2" data-a="rec" data-i="${v.id}">Imprimir recibo</button></details>
       <div class="flex gap-2 mt-2"><button class="btn2 flex-1" data-a="pagar" data-i="${v.id}">Marcar como Pagado</button>${wa}</div></div>`;
   }).join('') || '<p class="text-slate-500">Sin cuentas pendientes 🎉</p>';
-  return (vc.length ? `<div class="rounded-xl bg-rose-100 text-rose-800 p-4 font-semibold">⚠️ ${vc.length} ${vc.length > 1 ? 'facturas vencidas' : 'factura vencida'} por ${R(vc.reduce((s, v) => s + v.total, 0))}</div>` : '')
-    + big('Ventas del Mes', ven, 'text-emerald-700') + big('Gastos del Mes', gas, 'text-rose-600') + big('Ganancia Neta', gan, gan < 0 ? 'text-rose-600' : 'text-blue-900')
-    + `<div class="grid grid-cols-2 gap-3">${mini('Compras del mes', R(com))}${mini('Inventario a costo', R(inv))}${mini('Margen del mes', (ven ? Math.round(gan / ven * 100) : 0) + '%')}${mini('Por cobrar total', R(cx.reduce((s, v) => s + v.total, 0)))}</div>`
+  const ph = PER[V.per][1];
+  return (vc.length ? `<div class="rounded-xl bg-rose-100 text-rose-800 p-4 font-semibold">⚠️ ${vc.length} ${vc.length > 1 ? 'facturas vencidas' : 'factura vencida'} por ${R(sum(vc, v => v.total))}</div>` : '')
+    + `<h2 class="font-bold text-lg">Dashboard Gerencial</h2>`
+    + `<div class="grid grid-cols-4 gap-2">${Object.entries(PER).map(([k, [t]]) => `<button class="btn2 ${V.per === k ? '!bg-emerald-600 !text-white' : ''}" data-a="per" data-i="${k}">${t}</button>`).join('')}</div>`
+    + big('Ventas ' + ph, ven, 'text-emerald-700') + big('Gastos ' + ph, gas, 'text-rose-600') + big('Ganancia Neta', gan, gan < 0 ? 'text-rose-600' : 'text-blue-900')
+    + `<div class="grid grid-cols-2 gap-3">${mini('Ganancia bruta', R(bruta))}${mini('Margen neto', (ven ? Math.round(gan / ven * 100) : 0) + '%')}${mini('Facturas emitidas', vs.length)}${mini('Ticket promedio', R(vs.length ? ven / vs.length : 0))}${mini('Compras de mercancía', R(com))}${mini('Inventario a costo', R(sum(D.productos, p => p.stock * p.costo)))}${mini('Cobrado en efectivo', R(efe))}${mini('Cobrado por transferencia', R(tra))}${mini('Por cobrar total', R(sum(cx, v => v.total)))}${mini('Facturas vencidas', vc.length)}</div>`
+    + `<div class="card"><h2 class="font-bold mb-3">Ventas de los últimos 7 días</h2><div class="flex gap-2">${dias.map((d, k) => `<div class="flex-1"><div class="h-28 flex items-end"><div class="w-full bg-emerald-500 rounded-t" style="height:${vd[k] ? Math.max(4, Math.round(vd[k] / mx * 100)) : 0}%"></div></div><div class="text-[10px] text-center text-slate-500 mt-1">${d.slice(8)}</div></div>`).join('')}</div></div>`
+    + `<div class="card"><h2 class="font-bold mb-2">Artículos que más ganancia dejan</h2>${top.map(([n, t]) => `<div class="flex justify-between py-1"><span>${esc(n)} <span class="text-xs text-slate-500">x${t.q}</span></span><b class="text-emerald-700">${R(t.g)}</b></div>`).join('') || '<p class="text-slate-500">Aún no hay ventas en este período.</p>'}</div>`
     + `<div class="card"><h2 class="font-bold mb-2">Alertas de Stock</h2>${bajo.map(p => `<div class="flex justify-between py-1"><span>${esc(p.nombre)}</span><b class="text-rose-600">${p.stock}/${p.min}</b></div>`).join('') || '<p class="text-slate-500">Todo el inventario está bien 👍</p>'}</div>`
-    + `<div class="card"><h2 class="font-bold">Cuentas por Cobrar</h2>${cxHtml}</div>`
-    + (tp.length ? `<div class="card"><h2 class="font-bold mb-2">Más vendidos del mes</h2>${tp.map(([n, q]) => `<div class="flex justify-between py-1"><span>${esc(n)}</span><b>${q}</b></div>`).join('')}</div>` : '');
+    + `<div class="card"><h2 class="font-bold">Cuentas por Cobrar</h2>${cxHtml}</div>`;
 }
 
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 function resultados() {
   const q = norm(V.bq);
-  const l = D.productos.filter(p => !q || norm(p.nombre + ' ' + p.cat).includes(q)).slice(0, 6);
+  if (!q && !V.ver) return '';
+  const l = D.productos.filter(p => !q || norm(p.nombre + ' ' + p.cat).includes(q)).slice(0, q ? 8 : 30);
   return l.map(p => `<button class="w-full flex justify-between items-center text-left border rounded-xl p-3 bg-white" data-a="addp" data-i="${p.id}"><span><b>${esc(p.nombre)}</b><br><span class="text-xs text-slate-500">Stock ${p.stock}</span></span><b>${R(p.precio)}</b></button>`).join('')
     || '<p class="text-sm text-slate-500">Sin coincidencias. Usa la factura rápida de abajo.</p>';
 }
@@ -122,6 +142,7 @@ function vVender() {
   return `<div class="card space-y-3"><h2 class="font-bold">Nueva venta</h2>
     <input id="bq" class="in" type="search" data-k="bq" placeholder="🔍 Buscar artículo (ej. toalla)" value="${esc(V.bq)}" autocomplete="off">
     <label class="flex items-center gap-3 text-sm font-semibold">Cantidad<input class="in !w-24" type="number" min="1" inputmode="numeric" data-k="q" value="${V.q}"></label>
+    <button class="btn2 w-full" data-a="ver">${V.ver ? '▴ Ocultar artículos' : '▾ Ver artículos'}</button>
     <div id="res" class="space-y-2">${resultados()}</div>
     <details class="rounded-xl border p-3" ${cart.some(i => i.libre) || V.qn ? 'open' : ''}><summary class="font-semibold">⚡ Factura rápida (sin crear producto)</summary>
       <div class="space-y-2 mt-3"><input class="in" data-k="qn" placeholder="Nombre del artículo o servicio" value="${esc(V.qn)}">
@@ -166,26 +187,27 @@ const vMas = () => ['clientes|👥 Clientes', 'ventas|🧾 Historial de ventas',
 function vCli() {
   return `<div class="card space-y-3"><h2 class="font-bold">Nuevo cliente</h2>${fld('c-n', 'Nombre', '')}${fld('c-t', 'Teléfono / WhatsApp', '', 'tel')}<button class="btn" data-a="addC">Guardar cliente</button></div>`
     + D.clientes.map(c => {
-      const deb = D.ventas.filter(v => v.cliente === c.id && v.estado === 'Por Cobrar').reduce((s, v) => s + v.total, 0);
-      return `<div class="card flex justify-between"><div><b>${esc(c.nombre)}</b><div class="text-sm text-slate-500">${esc(c.tel || 'Sin teléfono')}</div></div><div class="text-right ${deb ? 'text-rose-600 font-semibold' : 'text-slate-400'}">${deb ? 'Debe ' + R(deb) : 'Al día'}</div></div>`;
+      const pend = D.ventas.filter(v => v.cliente === c.id && v.estado === 'Por Cobrar'), deb = pend.reduce((s, v) => s + v.total, 0);
+      return `<div class="card"><div class="flex justify-between"><div><b>${esc(c.nombre)}</b><div class="text-sm text-slate-500">${esc(c.tel || 'Sin teléfono')}</div></div><div class="text-right ${deb ? 'text-rose-600 font-semibold' : 'text-slate-400'}">${deb ? 'Debe ' + R(deb) : 'Al día'}</div></div>${pend.length ? `<details class="mt-2"><summary class="btn2 cursor-pointer">Ver lo que debe</summary>${pend.map(detalle).join('')}</details>` : ''}</div>`;
     }).join('');
 }
 
 function vVen() {
   return D.ventas.slice(0, 40).map(v => {
     const c = cli(v.cliente), venc = v.estado === 'Por Cobrar' && v.vence < hoy();
-    return `<div class="card"><div class="flex justify-between"><b>${v.num}</b><b>${R(v.total)}</b></div>
+    return `<div class="card ${v.estado === 'Cancelada' ? 'opacity-70' : ''}"><div class="flex justify-between"><b>${v.num}</b><b class="${v.estado === 'Cancelada' ? 'line-through text-slate-400' : ''}">${R(v.total)}</b></div>
       <div class="text-sm text-slate-500">${fd(v.fecha)}, ${esc(c ? c.nombre : 'Cliente general')}, ${v.metodo}</div>
-      <div class="mt-1">${badge(v.estado, v.estado === 'Pagado' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')} ${venc ? badge('Vencida', 'bg-rose-100 text-rose-700') : ''}</div>
-      <div class="flex gap-2 mt-3"><button class="btn2 flex-1" data-a="rec" data-i="${v.id}">Recibo</button><button class="btn2 text-rose-600" data-a="anular" data-i="${v.id}">Anular</button></div></div>`;
+      <div class="mt-1">${v.estado === 'Cancelada' ? badge('CANCELADA', 'bg-rose-600 text-white font-bold') : badge(v.estado, v.estado === 'Pagado' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')} ${venc ? badge('Vencida', 'bg-rose-100 text-rose-700') : ''}</div>
+      <details class="mt-2"><summary class="text-emerald-700 font-semibold cursor-pointer">Ver detalle</summary>${detalle(v)}</details>
+      <div class="flex gap-2 mt-3"><button class="btn2 flex-1" data-a="rec" data-i="${v.id}">Recibo</button>${v.estado === 'Cancelada' ? '' : `<button class="btn2 text-rose-600" data-a="anular" data-i="${v.id}">Cancelar factura</button>`}</div></div>`;
   }).join('') || '<p class="text-slate-500">Aún no hay ventas.</p>';
 }
 
 function vAj() {
   const c = D.cfg;
-  return `<div class="card space-y-3"><h2 class="font-bold">Mi negocio</h2>${fld('a-n', 'Nombre', c.nombre)}${fld('a-r', 'RNC', c.rnc)}${fld('a-t', 'Teléfono', c.tel)}${fld('a-i', 'ITBIS (%)', c.itbis, 'number')}<button class="btn" data-a="saveCfg">Guardar</button></div>
+  return `<div class="card space-y-3"><h2 class="font-bold">Mi negocio</h2>${fld('a-n', 'Nombre', c.nombre)}${fld('a-r', 'RNC', c.rnc)}${fld('a-t', 'Teléfono', c.tel)}${fld('a-i', 'ITBIS (%)', c.itbis, 'number')}${fld('a-u', 'Enlace de la nube (Google)', c.nubeUrl || '')}${fld('a-k', 'Clave secreta de la nube', c.nubeClave || '')}<button class="btn" data-a="saveCfg">Guardar</button></div>
     <div class="card space-y-3"><h2 class="font-bold">Respaldo de datos</h2><p class="text-sm text-slate-500">Tus datos viven en este teléfono. Envíate el respaldo a tu correo o WhatsApp con frecuencia.</p>
-    <button class="btn" data-a="bk">Compartir respaldo (correo, WhatsApp…)</button><button class="btn2 w-full" data-a="dl">Descargar respaldo</button><button class="btn2 w-full" data-a="rs">Restaurar respaldo</button>
+    <button class="btn" data-a="sync">Enviar ahora a mi hoja de Google y correo</button><p class="text-xs text-slate-500">${c.nubeUlt ? 'Última copia en la nube: ' + esc(c.nubeUlt) : 'Aún no has enviado copia a la nube.'}</p><button class="btn2 w-full" data-a="nube">Restaurar desde la nube</button><button class="btn2 w-full" data-a="bk">Compartir respaldo (WhatsApp…)</button><button class="btn2 w-full" data-a="dl">Descargar respaldo</button><button class="btn2 w-full" data-a="rs">Restaurar respaldo</button>
     <input id="rf" type="file" accept=".json,application/json" hidden></div>`;
 }
 
@@ -229,10 +251,31 @@ function imprimir(id) {
     lin(v.num, fd(v.fecha)), 'Cliente: ' + (c ? c.nombre : 'General'), L,
     ...v.items.flatMap(i => [...(i.nombre.match(/.{1,32}/g) || [i.nombre]), lin(' ' + i.cant + ' x ' + f2(i.precio), f2(i.cant * i.precio))]), L,
     lin('Subtotal', f2(v.sub)), v.itbis && lin('ITBIS', f2(v.itbis)), lin('TOTAL', f2(v.total)), L,
-    v.estado === 'Pagado' ? 'Pagado (' + v.metodo + ')' : 'A CREDITO, vence ' + fd(v.vence),
+    v.estado === 'Cancelada' ? cen('*** CANCELADA ***') : v.estado === 'Pagado' ? 'Pagado (' + v.metodo + ')' : 'A CREDITO, vence ' + fd(v.vence),
     cen('Gracias por su compra'), cen('Recibo no fiscal')].filter(Boolean);
   $('#rec').textContent = t.join('\n') + '\n\n\n\n';
   setTimeout(() => window.print(), 50);
+}
+
+function nubePush(manual) {
+  const c = D.cfg;
+  if (!c.nubeUrl) { if (manual) toast('Primero pega el enlace de la nube en Ajustes'); return; }
+  fetch(c.nubeUrl, {method: 'POST', mode: 'no-cors', body: JSON.stringify({clave: c.nubeClave, correo: !!manual, data: D})})
+    .then(() => { c.nubeUlt = new Date().toLocaleString('es-DO'); Store.save(D); if (manual) { toast('Copia enviada. Revisa tu hoja y tu correo'); if (tab === 'ajustes') render(); } })
+    .catch(() => { if (manual) toast('Sin conexión. Intenta de nuevo'); });
+}
+
+async function nubePull() {
+  const c = D.cfg;
+  if (!c.nubeUrl) return toast('Primero pega el enlace de la nube en Ajustes');
+  try {
+    const r = await fetch(c.nubeUrl + '?clave=' + encodeURIComponent(c.nubeClave)), d = await r.json();
+    if (!d.productos) throw 0;
+    if (!confirm('Esto reemplaza los datos de este teléfono con los de tu hoja. ¿Continuar?')) return;
+    const u = c.nubeUrl, k = c.nubeClave;
+    D = Object.assign(seed(), d); D.cfg = Object.assign(seed().cfg, D.cfg, {nubeUrl: u, nubeClave: k});
+    Store.save(D); render(); toast('Datos restaurados desde la nube');
+  } catch (e) { toast('No se pudo leer la copia. Revisa el enlace y la clave'); }
 }
 
 async function respaldo(compartir) {
@@ -264,7 +307,7 @@ const A = {
     if (ya + q > p.stock) return toast('Stock insuficiente: quedan ' + (p.stock - ya));
     const e = cart.find(i => i.id === p.id);
     if (e) e.cant += q; else cart.push({id: p.id, nombre: p.nombre, cant: q, precio: p.precio, costo: p.costo});
-    V.bq = ''; V.q = 1; render(); $('#bq').focus();
+    V.bq = ''; V.q = 1; V.ver = false; render(); $('#bq').focus();
   },
   addq: () => {
     const n = V.qn.trim(), c = parseInt(V.qc) || 0, pr = parseFloat(V.qp) || 0;
@@ -272,6 +315,8 @@ const A = {
     cart.push({id: null, libre: true, nombre: n, cant: c, precio: pr, costo: parseFloat(V.qk) || 0});
     V.qn = ''; V.qc = 1; V.qp = ''; V.qk = ''; render();
   },
+  ver: () => { V.ver = !V.ver; render(); },
+  per: i => { V.per = i; render(); },
   rm: i => { cart.splice(+i, 1); render(); },
   vender,
   pagar: id => { const v = D.ventas.find(x => x.id === id); v.estado = 'Pagado'; v.pagadoEl = hoy(); save(); render(); toast('Cobro registrado'); },
@@ -308,14 +353,16 @@ const A = {
   rec: imprimir,
   anular: id => {
     const v = D.ventas.find(x => x.id === id);
-    if (!confirm('¿Anular la venta ' + v.num + '? Se devuelve el stock.')) return;
+    if (v.estado === 'Cancelada' || !confirm('¿Cancelar la factura ' + v.num + '? Se devuelve el stock y queda marcada como CANCELADA.')) return;
     v.items.forEach(i => { const p = D.productos.find(x => x.id === i.id); if (p) p.stock += i.cant; });
-    D.ventas = D.ventas.filter(x => x.id !== id); save(); render();
+    v.estado = 'Cancelada'; v.canceladaEl = hoy(); save(); render(); toast('Factura ' + v.num + ' cancelada');
   },
   saveCfg: () => {
-    D.cfg.nombre = g('a-n').trim() || 'Mi Negocio'; D.cfg.rnc = g('a-r').trim(); D.cfg.tel = g('a-t').trim(); D.cfg.itbis = +g('a-i') || 0;
+    D.cfg.nombre = g('a-n').trim() || 'Mi Negocio'; D.cfg.rnc = g('a-r').trim(); D.cfg.tel = g('a-t').trim(); D.cfg.itbis = +g('a-i') || 0; D.cfg.nubeUrl = g('a-u').trim(); D.cfg.nubeClave = g('a-k').trim();
     save(); render(); toast('Ajustes guardados');
   },
+  sync: () => nubePush(true),
+  nube: nubePull,
   bk: () => respaldo(true),
   dl: () => respaldo(false),
   rs: () => $('#rf').click()
@@ -332,4 +379,3 @@ render();
 </script>
 </body>
 </html>
-
