@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facturación</title>
+<style>
+:root{
+  --desk:#dbe2ea; --paper:#fff; --ink:#18222e; --muted:#5a6876; --line:#cdd6df;
+  --navy:#14213a; --blue:#1d4fd7; --copper:#b0622b; --danger:#b3261e; --ok:#1e7a4c;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--desk);color:var(--ink);font:16px/1.45 "Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+.top{background:var(--navy);color:#fff;border-top:4px solid var(--copper)}
+.top-in{max-width:980px;margin:0 auto;padding:14px 20px 0;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:6px 24px}
+#brand{margin:0 0 12px;font-size:1.3rem;font-weight:700;letter-spacing:.01em}
+nav{display:flex;gap:4px}
+nav button{background:transparent;color:#c4d0e8;border:0;padding:10px 16px;font:inherit;font-weight:600;border-radius:8px 8px 0 0;cursor:pointer}
+nav button:hover{color:#fff}
+nav button[aria-current=page]{background:var(--desk);color:var(--ink)}
+main{max-width:980px;margin:0 auto;padding:20px}
+
+input,select,textarea{font:inherit;color:inherit;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:#fff}
+textarea{resize:vertical}
+label{display:block;font-size:.85rem;color:var(--muted);font-weight:600}
+label input,label textarea{margin-top:4px;font-weight:400;color:var(--ink)}
+.chk{display:flex;gap:8px;align-items:center;font-size:.95rem;color:var(--ink);font-weight:400;margin:14px 0 0}
+.chk input{width:auto;margin:0}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #7fa2ff;outline-offset:1px}
+
+.btn{font:inherit;font-weight:600;padding:10px 16px;border-radius:7px;border:1px solid var(--blue);background:var(--blue);color:#fff;cursor:pointer;min-height:42px}
+.btn:hover{background:#173fb0}
+.btn.ghost{background:#fff;color:var(--blue)}
+.btn.ghost:hover{background:#eef3ff}
+.btn.danger{background:#fff;color:var(--danger);border-color:#e3b3af}
+.btn.danger:hover{background:#fdeeed}
+.btn.sm{padding:6px 10px;min-height:0;font-size:.9rem}
+
+.tools{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+.tools select{flex:1 1 280px;width:auto}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+
+.paper,.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:28px}
+.paper{box-shadow:0 14px 30px -18px rgba(20,33,58,.45)}
+.card{margin-bottom:16px}
+.card h2{margin:0 0 14px;font-size:1.1rem}
+.card p{margin:0 0 12px;color:var(--muted)}
+
+.p-head{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;border-bottom:3px solid var(--copper);padding-bottom:16px;margin-bottom:18px}
+.p-head h2{margin:0 0 4px;font-size:1.6rem;line-height:1.15}
+.info{color:var(--muted);font-size:.92rem}
+.p-num{text-align:right;min-width:190px}
+.p-num span{display:block;font-size:.85rem;color:var(--muted);font-weight:600}
+.p-num strong{display:block;font-size:1.7rem;color:var(--blue);font-variant-numeric:tabular-nums;margin-bottom:6px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:640px){.grid2,.grid3{grid-template-columns:1fr}.paper,.card{padding:18px}.p-num{text-align:left}}
+
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+table.lines{margin-top:18px;min-width:560px}
+th{text-align:left;font-size:.8rem;color:var(--muted);font-weight:600;padding:8px 6px;border-bottom:2px solid var(--ink)}
+td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+.lines td input{border-color:transparent;padding:8px 6px}
+.lines td input:hover{border-color:var(--line)}
+.lines th:nth-child(2){width:84px}.lines th:nth-child(3){width:130px}.lines th:nth-child(4){width:130px}.lines th:nth-child(5){width:44px}
+input.n{text-align:right}
+.x{border:0;background:transparent;color:var(--muted);font-size:1.4rem;line-height:1;cursor:pointer;padding:4px 8px;border-radius:6px}
+.x:hover{color:var(--danger);background:#fdeeed}
+
+.tot{margin:18px 0 0 auto;max-width:340px}
+.tot>div{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;font-variant-numeric:tabular-nums}
+.tot .off b{color:var(--muted);font-weight:400}
+.tot .grand{border-top:2px solid var(--ink);margin-top:6px;padding-top:10px;font-size:1.35rem;font-weight:700}
+.tot .grand b{color:var(--blue)}
+.tot .chk{margin:0}
+.print-only{display:none}
+.nota{margin-top:20px}
+
+.art-row{display:grid;grid-template-columns:1fr 150px auto;gap:10px;margin-bottom:8px}
+@media(max-width:640px){.art-row{grid-template-columns:1fr 110px auto}}
+.empty{color:var(--muted);padding:18px 0}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+@media(prefers-reduced-motion:reduce){.toast{transition:none}}
+
+@media print{
+  body{background:#fff}
+  .top,.no-print,.tools,.actions,.toast{display:none!important}
+  main{padding:0;max-width:none}
+  .paper{box-shadow:none;border:0;padding:0}
+  input,textarea,select{border:0!important;background:transparent!important;padding:2px 0!important;appearance:none;-moz-appearance:textfield;resize:none}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .print-only{display:inline}
+  .tot .off{display:none}
+  .tw{overflow:visible}
+  table.lines{min-width:0}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <h1 id="brand">Facturación</h1>
+    <nav aria-label="Secciones">
+      <button data-tab="factura">Facturar</button>
+      <button data-tab="historial">Historial</button>
+      <button data-tab="config">Configuración</button>
+    </nav>
+  </div>
+</header>
+<main id="view"></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<noscript>Esta página necesita JavaScript activado.</noscript>
+
+<script>
+const KEY = 'facturacion_v1';
+const $ = s => document.querySelector(s);
+const view = $('#view');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => 'RD$ ' + (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const cl = o => JSON.parse(JSON.stringify(o));
+const fecha = s => String(s || '').split('-').reverse().join('/');
+
+function hoy() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function defaults() {
+  return {
+    config: {
+      empresa: "D' Franklyn Electricidad y Servicios",
+      rnc: '', telefono: '', direccion: '',
+      itbis: 18, itbisDefecto: false,
+      prefijo: 'F-', siguiente: 1,
+      nota: 'Gracias por preferirnos.'
+    },
+    articulos: [
+      {id: uid() + 'a', nombre: 'Visita técnica y diagnóstico', precio: 1000},
+      {id: uid() + 'b', nombre: 'Instalación de tomacorriente', precio: 800},
+      {id: uid() + 'c', nombre: 'Instalación de breaker', precio: 650},
+      {id: uid() + 'd', nombre: 'Punto de luz', precio: 900}
+    ],
+    facturas: []
+  };
+}
+
+function normalizar(d) {
+  const base = defaults();
+  return {
+    config: Object.assign(base.config, (d && d.config) || {}),
+    articulos: Array.isArray(d && d.articulos) ? d.articulos : base.articulos,
+    facturas: Array.isArray(d && d.facturas) ? d.facturas : []
+  };
+}
+
+function cargar() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) return normalizar(JSON.parse(raw));
+  } catch (e) {}
+  return defaults();
+}
+
+function guardarDB() {
+  try { localStorage.setItem(KEY, JSON.stringify(db)); }
+  catch (e) { toast('No se pudo guardar en este navegador'); }
+}
+
+let db = cargar();
+let tab = 'factura';
+
+const formatNum = n => db.config.prefijo + String(n).padStart(4, '0');
+
+function nuevaFactura() {
+  return {
+    id: null, numero: null, fecha: hoy(), cliente: '', doc: '',
+    lineas: [{desc: '', cant: 1, precio: 0}],
+    conItbis: !!db.config.itbisDefecto, tasa: undefined,
+    nota: db.config.nota || ''
+  };
+}
+let cur = nuevaFactura();
+
+const imp = l => round2((+l.cant || 0) * (+l.precio || 0));
+function totales(f) {
+  const sub = round2(f.lineas.reduce((s, l) => s + imp(l), 0));
+  const tasa = f.tasa ?? db.config.itbis;
+  const itbis = f.conItbis ? round2(sub * tasa / 100) : 0;
+  return {sub, tasa, itbis, total: round2(sub + itbis)};
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+/* ---------- Vistas ---------- */
+function render() {
+  document.querySelectorAll('nav [data-tab]').forEach(b =>
+    b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'));
+  $('#brand').textContent = db.config.empresa || 'Facturación';
+  document.title = db.config.empresa || 'Facturación';
+  if (tab === 'factura') renderFactura();
+  else if (tab === 'historial') renderHistorial();
+  else renderConfig();
+}
+
+function renderFactura() {
+  const c = db.config, f = cur, tasa = f.tasa ?? c.itbis;
+  const opts = db.articulos.map((a, i) => `<option value="${i}">${esc(a.nombre)} (${money(a.precio)})</option>`).join('');
+  const info = [c.rnc && 'RNC ' + c.rnc, c.telefono && 'Tel. ' + c.telefono, c.direccion]
+    .filter(Boolean).map(x => `<div>${esc(x)}</div>`).join('');
+  const rows = f.lineas.map((l, i) => `
+    <tr data-i="${i}">
+      <td><input class="l-desc" value="${esc(l.desc)}" placeholder="Descripción del artículo o servicio" autocomplete="off"></td>
+      <td><input class="l-cant n" type="number" min="0" step="any" value="${esc(l.cant)}" aria-label="Cantidad"></td>
+      <td><input class="l-precio n" type="number" min="0" step="any" value="${l.precio || ''}" placeholder="0.00" aria-label="Precio"></td>
+      <td class="n amt"></td>
+      <td class="no-print"><button class="x" data-act="del-line" aria-label="Quitar línea">×</button></td>
+    </tr>`).join('');
+  view.innerHTML = `
+    <div class="tools no-print">
+      <select id="pick" aria-label="Agregar artículo del catálogo">
+        <option value="">Agregar artículo del catálogo…</option>${opts}
+      </select>
+      <button class="btn ghost" data-act="add-line">Agregar línea libre</button>
+    </div>
+    <article class="paper">
+      <header class="p-head">
+        <div><h2>${esc(c.empresa)}</h2><div class="info">${info}</div></div>
+        <div class="p-num">
+          <span>Factura</span>
+          <strong>${esc(f.numero || formatNum(c.siguiente))}</strong>
+          <label>Fecha<input type="date" id="f-fecha" value="${esc(f.fecha)}"></label>
+        </div>
+      </header>
+      <div class="grid2">
+        <label>Cliente<input id="f-cliente" value="${esc(f.cliente)}" placeholder="Nombre del cliente" autocomplete="off"></label>
+        <label>RNC o cédula<input id="f-doc" value="${esc(f.doc)}" inputmode="numeric" autocomplete="off"></label>
+      </div>
+      <div class="tw">
+        <table class="lines">
+          <thead><tr><th>Descripción</th><th class="n">Cant.</th><th class="n">Precio</th><th class="n">Importe</th><th class="no-print"></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="tot">
+        <div><span>Subtotal</span><b id="t-sub"></b></div>
+        <div id="itbis-row">
+          <label class="chk no-print"><input type="checkbox" id="f-itbis" ${f.conItbis ? 'checked' : ''}> Aplicar ITBIS (${esc(tasa)}%)</label>
+          <span class="print-only">ITBIS (${esc(tasa)}%)</span>
+          <b id="t-itbis"></b>
+        </div>
+        <div class="grand"><span>Total</span><b id="t-total"></b></div>
+      </div>
+      <label class="nota">Nota<textarea id="f-nota" rows="2">${esc(f.nota)}</textarea></label>
+    </article>
+    <div class="actions no-print">
+      <button class="btn" data-act="guardar">Guardar factura</button>
+      <button class="btn ghost" data-act="imprimir">Guardar e imprimir</button>
+      <button class="btn ghost" data-act="nueva">Nueva factura</button>
+    </div>`;
+  updateTotals();
+}
+
+function updateTotals() {
+  const t = totales(cur);
+  document.querySelectorAll('tr[data-i]').forEach(tr => {
+    tr.querySelector('.amt').textContent = money(imp(cur.lineas[+tr.dataset.i]));
+  });
+  $('#t-sub').textContent = money(t.sub);
+  $('#t-itbis').textContent = money(t.itbis);
+  $('#t-total').textContent = money(t.total);
+  $('#itbis-row').classList.toggle('off', !cur.conItbis);
+}
+
+let hf = {q: '', desde: '', hasta: ''};
+
+function renderHistorial() {
+  view.innerHTML = `
+    <section class="card">
+      <h2>Facturas realizadas</h2>
+      <div class="grid3">
+        <label>Buscar por cliente o número<input id="h-q" value="${esc(hf.q)}" autocomplete="off"></label>
+        <label>Desde<input type="date" id="h-desde" value="${esc(hf.desde)}"></label>
+        <label>Hasta<input type="date" id="h-hasta" value="${esc(hf.hasta)}"></label>
+      </div>
+      <div id="h-list"></div>
+    </section>`;
+  pintarHistorial();
+}
+
+function pintarHistorial() {
+  const q = hf.q.trim().toLowerCase();
+  const lista = db.facturas.filter(f =>
+    (!q || (f.cliente || '').toLowerCase().includes(q) || (f.numero || '').toLowerCase().includes(q)) &&
+    (!hf.desde || f.fecha >= hf.desde) && (!hf.hasta || f.fecha <= hf.hasta));
+  const suma = round2(lista.reduce((s, f) => s + totales(f).total, 0));
+  const rows = lista.map(f => `
+    <tr>
+      <td><b>${esc(f.numero)}</b></td>
+      <td>${fecha(f.fecha)}</td>
+      <td>${esc(f.cliente || 'Sin nombre')}</td>
+      <td class="n">${money(totales(f).total)}</td>
+      <td class="n" style="white-space:nowrap">
+        <button class="btn ghost sm" data-act="abrir" data-id="${f.id}">Ver o imprimir</button>
+        <button class="btn danger sm" data-act="eliminar" data-id="${f.id}">Eliminar</button>
+      </td>
+    </tr>`).join('');
+  $('#h-list').innerHTML = lista.length
+    ? `<p style="margin-top:16px"><b>${lista.length}</b> ${lista.length === 1 ? 'factura' : 'facturas'}, total <b>${money(suma)}</b></p>
+       <div class="tw"><table><thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th class="n">Total</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+    : `<p class="empty">${db.facturas.length ? 'Ninguna factura coincide con la búsqueda.' : 'Todavía no hay facturas guardadas. Crea la primera en Facturar.'}</p>`;
+}
+
+function renderConfig() {
+  const c = db.config;
+  const arts = db.articulos.map((a, i) => `
+    <div class="art-row" data-a="${i}">
+      <input class="a-nombre" value="${esc(a.nombre)}" placeholder="Nombre del artículo o servicio" aria-label="Nombre">
+      <input class="a-precio n" type="number" min="0" step="any" value="${a.precio || ''}" placeholder="Precio" aria-label="Precio">
+      <button class="btn danger sm" data-act="del-art">Quitar</button>
+    </div>`).join('');
+  view.innerHTML = `
+    <section class="card">
+      <h2>Datos de la empresa</h2>
+      <div class="grid2">
+        <label>Nombre de la empresa<input data-cfg="empresa" value="${esc(c.empresa)}"></label>
+        <label>RNC<input data-cfg="rnc" value="${esc(c.rnc)}"></label>
+        <label>Teléfono<input data-cfg="telefono" value="${esc(c.telefono)}"></label>
+        <label>Dirección<input data-cfg="direccion" value="${esc(c.direccion)}"></label>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Facturación</h2>
+      <div class="grid3">
+        <label>ITBIS (%)<input data-cfg="itbis" type="number" min="0" step="any" value="${esc(c.itbis)}"></label>
+        <label>Prefijo del número<input data-cfg="prefijo" value="${esc(c.prefijo)}"></label>
+        <label>Próximo número<input data-cfg="siguiente" type="number" min="1" step="1" value="${esc(c.siguiente)}"></label>
+      </div>
+      <label class="chk"><input type="checkbox" data-cfg="itbisDefecto" ${c.itbisDefecto ? 'checked' : ''}> Aplicar ITBIS por defecto en las facturas nuevas</label>
+      <label style="margin-top:14px">Nota al pie por defecto<input data-cfg="nota" value="${esc(c.nota)}"></label>
+    </section>
+    <section class="card">
+      <h2>Artículos y precios</h2>
+      <div id="art-list">${arts || '<p class="empty">No hay artículos. Agrega el primero.</p>'}</div>
+      <button class="btn ghost" data-act="add-art">Agregar artículo</button>
+    </section>
+    <section class="card">
+      <h2>Respaldo</h2>
+      <p>Los datos se guardan en este navegador. Descarga un respaldo con frecuencia, o para pasar todo a otro equipo.</p>
+      <div class="actions" style="margin-top:0">
+        <button class="btn ghost" data-act="export">Descargar respaldo</button>
+        <button class="btn ghost" data-act="import">Cargar respaldo</button>
+        <input type="file" id="imp" accept="application/json,.json" hidden>
+      </div>
+    </section>`;
+}
+
+/* ---------- Acciones ---------- */
+function guardarFactura() {
+  cur.lineas = cur.lineas.filter(l => l.desc.trim() || +l.precio);
+  if (!cur.lineas.length) {
+    cur.lineas = [{desc: '', cant: 1, precio: 0}];
+    renderFactura();
+    toast('Agrega al menos un artículo o servicio');
+    return false;
+  }
+  if (!cur.id) {
+    cur.id = uid();
+    cur.numero = formatNum(db.config.siguiente);
+    cur.tasa = cur.tasa ?? db.config.itbis;
+    db.config.siguiente++;
+    db.facturas.unshift(cl(cur));
+  } else {
+    const i = db.facturas.findIndex(x => x.id === cur.id);
+    if (i >= 0) db.facturas[i] = cl(cur); else db.facturas.unshift(cl(cur));
+  }
+  guardarDB();
+  renderFactura();
+  toast('Factura ' + cur.numero + ' guardada');
+  return true;
+}
+
+function exportar() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(db, null, 2)], {type: 'application/json'}));
+  a.download = 'respaldo-facturacion-' + hoy() + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-tab],[data-act]');
+  if (!b) return;
+  if (b.dataset.tab) { tab = b.dataset.tab; render(); window.scrollTo(0, 0); return; }
+  const act = b.dataset.act, id = b.dataset.id;
+  const tr = b.closest('tr[data-i]'), ar = b.closest('.art-row');
+  if (act === 'add-line') {
+    cur.lineas.push({desc: '', cant: 1, precio: 0}); renderFactura();
+    const d = document.querySelectorAll('.l-desc'); d[d.length - 1].focus();
+  } else if (act === 'del-line') {
+    cur.lineas.splice(+tr.dataset.i, 1);
+    if (!cur.lineas.length) cur.lineas.push({desc: '', cant: 1, precio: 0});
+    renderFactura();
+  } else if (act === 'nueva') {
+    cur = nuevaFactura(); renderFactura();
+  } else if (act === 'guardar') {
+    guardarFactura();
+  } else if (act === 'imprimir') {
+    if (guardarFactura()) {
+      const prev = document.title;
+      document.title = cur.numero + (cur.cliente ? ' ' + cur.cliente : '');
+      setTimeout(() => { window.print(); document.title = prev; }, 60);
+    }
+  } else if (act === 'abrir') {
+    const f = db.facturas.find(x => x.id === id);
+    if (f) { cur = cl(f); tab = 'factura'; render(); window.scrollTo(0, 0); }
+  } else if (act === 'eliminar') {
+    const f = db.facturas.find(x => x.id === id);
+    if (f && confirm('¿Eliminar la factura ' + f.numero + '? No se puede deshacer.')) {
+      db.facturas = db.facturas.filter(x => x.id !== id);
+      if (cur.id === id) cur = nuevaFactura();
+      guardarDB(); renderHistorial(); toast('Factura eliminada');
+    }
+  } else if (act === 'add-art') {
+    db.articulos.push({id: uid(), nombre: '', precio: 0});
+    guardarDB(); renderConfig();
+    const n = document.querySelectorAll('.a-nombre'); n[n.length - 1].focus();
+  } else if (act === 'del-art') {
+    db.articulos.splice(+ar.dataset.a, 1); guardarDB(); renderConfig();
+  } else if (act === 'export') {
+    exportar();
+  } else if (act === 'import') {
+    $('#imp').click();
+  }
+});
+
+view.addEventListener('input', e => {
+  const t = e.target, tr = t.closest('tr[data-i]'), ar = t.closest('.art-row');
+  if (t.id === 'h-q' || t.id === 'h-desde' || t.id === 'h-hasta') {
+    hf[t.id === 'h-q' ? 'q' : t.id === 'h-desde' ? 'desde' : 'hasta'] = t.value;
+    pintarHistorial(); return;
+  }
+  if (t.dataset.cfg) {
+    const k = t.dataset.cfg;
+    let v = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (parseFloat(t.value) || 0) : t.value;
+    if (k === 'siguiente') v = Math.max(1, Math.floor(v));
+    db.config[k] = v;
+    if (k === 'empresa') { $('#brand').textContent = v || 'Facturación'; document.title = v || 'Facturación'; }
+    guardarDB(); return;
+  }
+  if (ar) {
+    const a = db.articulos[+ar.dataset.a];
+    if (t.classList.contains('a-nombre')) a.nombre = t.value; else a.precio = parseFloat(t.value) || 0;
+    guardarDB(); return;
+  }
+  if (tr) {
+    const l = cur.lineas[+tr.dataset.i];
+    if (t.classList.contains('l-desc')) l.desc = t.value;
+    else if (t.classList.contains('l-cant')) l.cant = t.value;
+    else if (t.classList.contains('l-precio')) l.precio = t.value;
+    updateTotals(); return;
+  }
+  if (t.id === 'f-cliente') cur.cliente = t.value;
+  else if (t.id === 'f-doc') cur.doc = t.value;
+  else if (t.id === 'f-fecha') cur.fecha = t.value;
+  else if (t.id === 'f-nota') cur.nota = t.value;
+  else if (t.id === 'f-itbis') { cur.conItbis = t.checked; updateTotals(); }
+});
+
+view.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'pick' && t.value !== '') {
+    const a = db.articulos[+t.value];
+    const soloVacia = cur.lineas.length === 1 && !cur.lineas[0].desc.trim() && !+cur.lineas[0].precio;
+    const linea = {desc: a.nombre, cant: 1, precio: a.precio};
+    if (soloVacia) cur.lineas = [linea]; else cur.lineas.push(linea);
+    renderFactura();
+  } else if (t.id === 'imp' && t.files[0]) {
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const d = JSON.parse(r.result);
+        if (!d || !d.config) throw new Error('formato');
+        if (!confirm('Esto reemplaza los datos actuales con los del respaldo. ¿Continuar?')) return;
+        db = normalizar(d); guardarDB(); cur = nuevaFactura(); render(); toast('Respaldo cargado');
+      } catch (err) { toast('El archivo no es un respaldo válido'); }
+    };
+    r.readAsText(t.files[0]);
+  }
+});
+
+view.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  const t = e.target, tr = t.closest('tr[data-i]');
+  if (!tr) return;
+  e.preventDefault();
+  const i = +tr.dataset.i;
+  if (t.classList.contains('l-desc')) {
+    const c = tr.querySelector('.l-cant'); c.focus(); c.select();
+  } else if (t.classList.contains('l-cant')) {
+    const p = tr.querySelector('.l-precio'); p.focus(); p.select();
+  } else if (t.classList.contains('l-precio')) {
+    if (i < cur.lineas.length - 1) { document.querySelectorAll('.l-desc')[i + 1].focus(); return; }
+    const l = cur.lineas[i];
+    if (!l.desc.trim() && !+l.precio) return;
+    cur.lineas.push({desc: '', cant: 1, precio: 0});
+    renderFactura();
+    const d = document.querySelectorAll('.l-desc'); d[d.length - 1].focus();
+  }
+});
+
+render();
+</script>
+</body>
+</html>
