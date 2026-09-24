@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#065f46">
 <title>Variedades J&amp;T</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 body{-webkit-tap-highlight-color:transparent}
 .in{width:100%;border:1px solid #d1d5db;border-radius:.75rem;padding:.8rem;font-size:1rem;background:#fff}
@@ -17,6 +18,17 @@ body{-webkit-tap-highlight-color:transparent}
 </style>
 </head>
 <body class="bg-slate-100 text-slate-800 pb-24">
+<div id="auth" class="fixed inset-0 bg-emerald-800 flex items-center justify-center p-4 z-50">
+  <div class="bg-white rounded-2xl p-6 w-full max-w-sm space-y-3">
+    <h1 class="font-bold text-xl text-center text-emerald-800">Variedades J&amp;T</h1>
+    <p class="text-sm text-slate-500 text-center">Entra con tu correo para acceder a tus datos desde cualquier dispositivo.</p>
+    <input id="au-e" class="in" type="email" placeholder="Correo" autocomplete="username">
+    <input id="au-p" class="in" type="password" placeholder="Contraseña" autocomplete="current-password">
+    <button id="au-in" class="btn">Entrar</button>
+    <button id="au-up" class="btn2 w-full">Crear cuenta nueva</button>
+    <p id="au-msg" class="text-sm text-center min-h-[1.25rem]"></p>
+  </div>
+</div>
 <header class="sticky top-0 z-10 bg-emerald-800 text-white px-4 py-3 flex justify-between items-center">
   <h1 id="tt" class="font-bold truncate"></h1>
   <button data-a="go" data-i="mas" class="text-2xl px-2" aria-label="Más opciones">☰</button>
@@ -25,16 +37,34 @@ body{-webkit-tap-highlight-color:transparent}
 <nav id="nav" class="fixed bottom-0 inset-x-0 bg-white border-t grid grid-cols-4 pb-[env(safe-area-inset-bottom)]"></nav>
 <div id="ts" class="fixed left-1/2 -translate-x-1/2 bottom-24 bg-slate-900 text-white px-4 py-2 rounded-xl opacity-0 transition-opacity pointer-events-none z-20"></div>
 <div id="rec"></div>
-
 <script>
 /* ===== CAPA DE DATOS =====
-   Todo el acceso a datos pasa por Store. Para conectar Supabase o Firebase,
-   reemplaza load() y save() (mismo formato JSON) sin tocar el resto del código. */
+Todo el acceso a datos pasa por Store. Para conectar Supabase o Firebase,
+reemplaza load() y save() (mismo formato JSON) sin tocar el resto del código. */
 const KEY = 'hogar_v1';
 const Store = {
   load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } },
   save(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { alert('No se pudo guardar en este teléfono.'); } }
 };
+/* ===== NUBE (Supabase) =====
+Guarda todos los datos del negocio en una sola fila por usuario, protegida
+por Row Level Security: solo el dueño de la cuenta puede leerla o escribirla. */
+const SUPABASE_URL = 'https://uukxpwaqrnxdxkclduru.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_-iZx14g12WjtAX2OtUerTA_0Jrzmn3w';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let cloudT;
+async function cloudPush() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  await sb.from('negocio_data').upsert({ user_id: user.id, data: D, actualizado_en: new Date().toISOString() });
+}
+async function cloudPull() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await sb.from('negocio_data').select('data').eq('user_id', user.id).maybeSingle();
+  if (error || !data) return null;
+  return data.data;
+}
 const seed = () => ({
   cfg: {nombre: 'Variedades J&T', rnc: '', tel: '', itbis: 18, seq: 1},
   productos: [
@@ -48,9 +78,12 @@ let D = Object.assign(seed(), Store.load() || {});
 D.cfg = Object.assign(seed().cfg, D.cfg);
 if (D.cfg.nombre === 'Mi Negocio del Hogar') D.cfg.nombre = 'Variedades J&T';
 let syncT;
-const save = () => { Store.save(D); clearTimeout(syncT); if (D.cfg.nubeUrl) syncT = setTimeout(() => nubePush(false), 4000); };
+const save = () => {
+  Store.save(D);
+  clearTimeout(syncT); if (D.cfg.nubeUrl) syncT = setTimeout(() => nubePush(false), 4000);
+  clearTimeout(cloudT); cloudT = setTimeout(cloudPush, 1500);
+};
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
-
 /* ===== UTILIDADES ===== */
 const $ = s => document.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
@@ -67,22 +100,18 @@ let tm;
 function toast(m) { const t = $('#ts'); t.textContent = m; t.style.opacity = 1; clearTimeout(tm); tm = setTimeout(() => t.style.opacity = 0, 2500); }
 const sel = (k, opts, cur) => `<select class="in" data-k="${k}" data-r>${opts.map(([v, t]) => `<option value="${esc(v)}" ${v == cur ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
 const fld = (id, l, v, t = 'text') => `<label class="block text-sm font-semibold">${l}<input id="${id}" class="in mt-1 font-normal" type="${t}" ${t === 'number' ? 'inputmode="decimal" step="any" min="0"' : ''} value="${esc(v ?? '')}"></label>`;
-
 /* ===== ESTADO DE LA INTERFAZ ===== */
 const TABS = [['inicio', '🏠', 'Inicio'], ['vender', '🛒', 'Vender'], ['inventario', '📦', 'Inventario'], ['gastos', '💸', 'Gastos']];
 let tab = 'inicio', cart = [], form = null;
 let V = {per: 'mes', ver: false, bq: '', qn: '', qc: 1, qp: '', qk: '', q: 1, cliente: '', estado: 'Pagado', dias: 15, metodo: 'Efectivo', itbis: false, nom: '', tel: ''};
-
 /* ===== VISTAS ===== */
 const detalle = v => `<div class="mt-2 rounded-xl bg-slate-50 p-3 text-sm">
-  <div class="text-xs text-slate-500 mb-1">${v.num}, ${fd(v.fecha)}</div>
+<div class="text-xs text-slate-500 mb-1">${v.num}, ${fd(v.fecha)}</div>
   ${v.items.map(i => `<div class="flex justify-between py-0.5"><span>${i.cant} × ${esc(i.nombre)}</span><span>${R(i.cant * i.precio)}</span></div>`).join('')}
   ${v.itbis ? `<div class="flex justify-between text-slate-500"><span>ITBIS</span><span>${R(v.itbis)}</span></div>` : ''}
-  <div class="flex justify-between font-bold border-t mt-1 pt-1"><span>Total</span><span>${R(v.total)}</span></div></div>`;
-
+<div class="flex justify-between font-bold border-t mt-1 pt-1"><span>Total</span><span>${R(v.total)}</span></div></div>`;
 const PER = {hoy: ['Hoy', 'de Hoy'], sem: ['7 días', 'de 7 días'], mes: ['Mes', 'del Mes'], anio: ['Año', 'del Año']};
 const enPer = f => V.per === 'hoy' ? f === hoy() : V.per === 'sem' ? f >= sumar(hoy(), -6) : V.per === 'mes' ? f.startsWith(mes()) : f.startsWith(hoy().slice(0, 4));
-
 function vInicio() {
   const h = hoy(), ok = D.ventas.filter(v => v.estado !== 'Cancelada'), vs = ok.filter(v => enPer(v.fecha));
   const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
@@ -105,9 +134,9 @@ function vInicio() {
     const c = cli(v.cliente), venc = v.vence < h;
     const wa = c && c.tel ? `<a class="btn2" href="https://wa.me/1${c.tel.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent('Hola ' + c.nombre + ', le recordamos su pendiente de ' + R(v.total) + ' (' + v.num + ').')}">WhatsApp</a>` : '';
     return `<div class="border-b py-3"><div class="flex justify-between"><b>${esc(c ? c.nombre : 'Cliente')}</b><b>${R(v.total)}</b></div>
-      <div class="text-sm text-slate-500">${v.num}, vence ${fd(v.vence)} ${venc ? badge('Vencida', 'bg-rose-100 text-rose-700') : ''}</div>
-      <details class="mt-2"><summary class="btn2 cursor-pointer">Ver factura (qué compró)</summary>${detalle(v)}<button class="btn2 w-full mt-2" data-a="rec" data-i="${v.id}">Imprimir recibo</button></details>
-      <div class="flex gap-2 mt-2"><button class="btn2 flex-1" data-a="pagar" data-i="${v.id}">Marcar como Pagado</button>${wa}</div></div>`;
+<div class="text-sm text-slate-500">${v.num}, vence ${fd(v.vence)} ${venc ? badge('Vencida', 'bg-rose-100 text-rose-700') : ''}</div>
+<details class="mt-2"><summary class="btn2 cursor-pointer">Ver factura (qué compró)</summary>${detalle(v)}<button class="btn2 w-full mt-2" data-a="rec" data-i="${v.id}">Imprimir recibo</button></details>
+<div class="flex gap-2 mt-2"><button class="btn2 flex-1" data-a="pagar" data-i="${v.id}">Marcar como Pagado</button>${wa}</div></div>`;
   }).join('') || '<p class="text-slate-500">Sin cuentas pendientes 🎉</p>';
   const ph = PER[V.per][1];
   return (vc.length ? `<div class="rounded-xl bg-rose-100 text-rose-800 p-4 font-semibold">⚠️ ${vc.length} ${vc.length > 1 ? 'facturas vencidas' : 'factura vencida'} por ${R(sum(vc, v => v.total))}</div>` : '')
@@ -120,7 +149,6 @@ function vInicio() {
     + `<div class="card"><h2 class="font-bold mb-2">Alertas de Stock</h2>${bajo.map(p => `<div class="flex justify-between py-1"><span>${esc(p.nombre)}</span><b class="text-rose-600">${p.stock}/${p.min}</b></div>`).join('') || '<p class="text-slate-500">Todo el inventario está bien 👍</p>'}</div>`
     + `<div class="card"><h2 class="font-bold">Cuentas por Cobrar</h2>${cxHtml}</div>`;
 }
-
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 function resultados() {
   const q = norm(V.bq);
@@ -129,61 +157,55 @@ function resultados() {
   return l.map(p => `<button class="w-full flex justify-between items-center text-left border rounded-xl p-3 bg-white" data-a="addp" data-i="${p.id}"><span><b>${esc(p.nombre)}</b><br><span class="text-xs text-slate-500">Stock ${p.stock}</span></span><b>${R(p.precio)}</b></button>`).join('')
     || '<p class="text-sm text-slate-500">Sin coincidencias. Usa la factura rápida de abajo.</p>';
 }
-
 function cartTot() {
   const sub = cart.reduce((s, i) => s + i.cant * i.precio, 0);
   const itbis = V.itbis ? Math.round(sub * D.cfg.itbis) / 100 : 0;
   return {sub, itbis, total: sub + itbis};
 }
-
 function vVender() {
   const t = cartTot(), cred = V.estado === 'Por Cobrar';
   const cl = [['', 'Cliente general'], ...D.clientes.map(x => [x.id, x.nombre]), ['__n', '+ Nuevo cliente']];
   return `<div class="card space-y-3"><h2 class="font-bold">Nueva venta</h2>
-    <input id="bq" class="in" type="search" data-k="bq" placeholder="🔍 Buscar artículo (ej. toalla)" value="${esc(V.bq)}" autocomplete="off">
-    <label class="flex items-center gap-3 text-sm font-semibold">Cantidad<input class="in !w-24" type="number" min="1" inputmode="numeric" data-k="q" value="${V.q}"></label>
-    <button class="btn2 w-full" data-a="ver">${V.ver ? '▴ Ocultar artículos' : '▾ Ver artículos'}</button>
-    <div id="res" class="space-y-2">${resultados()}</div>
-    <details class="rounded-xl border p-3" ${cart.some(i => i.libre) || V.qn ? 'open' : ''}><summary class="font-semibold">⚡ Factura rápida (sin crear producto)</summary>
-      <div class="space-y-2 mt-3"><input class="in" data-k="qn" placeholder="Nombre del artículo o servicio" value="${esc(V.qn)}">
-      <div class="grid grid-cols-3 gap-2"><input class="in" type="number" min="1" inputmode="numeric" data-k="qc" placeholder="Cant." value="${V.qc}"><input class="in" type="number" inputmode="decimal" data-k="qp" placeholder="Precio" value="${esc(V.qp)}"><input class="in" type="number" inputmode="decimal" data-k="qk" placeholder="Costo (opc.)" value="${esc(V.qk)}"></div>
-      <button class="btn2 w-full" data-a="addq">Agregar a la factura</button></div></details>
+<input id="bq" class="in" type="search" data-k="bq" placeholder="🔍 Buscar artículo (ej. toalla)" value="${esc(V.bq)}" autocomplete="off">
+<label class="flex items-center gap-3 text-sm font-semibold">Cantidad<input class="in !w-24" type="number" min="1" inputmode="numeric" data-k="q" value="${V.q}"></label>
+<button class="btn2 w-full" data-a="ver">${V.ver ? '▴ Ocultar artículos' : '▾ Ver artículos'}</button>
+<div id="res" class="space-y-2">${resultados()}</div>
+<details class="rounded-xl border p-3" ${cart.some(i => i.libre) || V.qn ? 'open' : ''}><summary class="font-semibold">⚡ Factura rápida (sin crear producto)</summary>
+<div class="space-y-2 mt-3"><input class="in" data-k="qn" placeholder="Nombre del artículo o servicio" value="${esc(V.qn)}">
+<div class="grid grid-cols-3 gap-2"><input class="in" type="number" min="1" inputmode="numeric" data-k="qc" placeholder="Cant." value="${V.qc}"><input class="in" type="number" inputmode="decimal" data-k="qp" placeholder="Precio" value="${esc(V.qp)}"><input class="in" type="number" inputmode="decimal" data-k="qk" placeholder="Costo (opc.)" value="${esc(V.qk)}"></div>
+<button class="btn2 w-full" data-a="addq">Agregar a la factura</button></div></details>
     ${cart.map((i, n) => `<div class="flex justify-between items-center border-b py-2"><span>${i.cant} × ${esc(i.nombre)}</span><span>${R(i.cant * i.precio)} <button data-a="rm" data-i="${n}" class="text-rose-600 px-2">✕</button></span></div>`).join('')}
     ${sel('cliente', cl, V.cliente)}
     ${V.cliente === '__n' ? `<input class="in" data-k="nom" placeholder="Nombre del cliente" value="${esc(V.nom)}"><input class="in" type="tel" data-k="tel" placeholder="Teléfono / WhatsApp" value="${esc(V.tel)}">` : ''}
     ${sel('estado', [['Pagado', 'Pagado'], ['Por Cobrar', 'Por Cobrar']], V.estado)}
     ${cred ? sel('dias', [[8, 'Vence en 8 días'], [15, 'Vence en 15 días'], [30, 'Vence en 30 días']], V.dias) : ''}
     ${sel('metodo', [['Efectivo', 'Efectivo'], ['Transferencia', 'Transferencia']], V.metodo)}
-    <label class="flex gap-2 items-center"><input type="checkbox" data-k="itbis" data-r ${V.itbis ? 'checked' : ''}> Aplicar ITBIS (${D.cfg.itbis}%)</label>
-    <div class="flex justify-between font-bold text-lg"><span>Total</span><span>${R(t.total)}</span></div>
-    <button class="btn" data-a="vender">Registrar Venta</button></div>`;
+<label class="flex gap-2 items-center"><input type="checkbox" data-k="itbis" data-r ${V.itbis ? 'checked' : ''}> Aplicar ITBIS (${D.cfg.itbis}%)</label>
+<div class="flex justify-between font-bold text-lg"><span>Total</span><span>${R(t.total)}</span></div>
+<button class="btn" data-a="vender">Registrar Venta</button></div>`;
 }
-
 function vInv() {
   const f = form;
   return `<button class="btn" data-a="nuevoP">+ Agregar Producto</button>`
     + (f ? `<div class="card space-y-3"><h2 class="font-bold">${f.id ? 'Editar' : 'Nuevo'} producto</h2>
       ${fld('f-n', 'Nombre', f.nombre)}${fld('f-c', 'Categoría', f.cat)}${fld('f-co', 'Costo de compra (RD$)', f.costo, 'number')}${fld('f-pr', 'Precio de venta (RD$)', f.precio, 'number')}${f.id ? '' : fld('f-s', 'Stock inicial', f.stock, 'number')}${fld('f-m', 'Stock mínimo', f.min, 'number')}
-      <div class="flex gap-2"><button class="btn" data-a="saveP">Guardar</button><button class="btn2" data-a="cancel">Cancelar</button></div></div>` : '')
+<div class="flex gap-2"><button class="btn" data-a="saveP">Guardar</button><button class="btn2" data-a="cancel">Cancelar</button></div></div>` : '')
     + D.productos.map(p => {
       const low = p.stock <= p.min, mg = p.precio ? Math.round((p.precio - p.costo) / p.precio * 100) : 0;
       return `<div class="card"><div class="flex justify-between"><div><b>${esc(p.nombre)}</b><div class="text-sm text-slate-500">${esc(p.cat)}, costo ${R(p.costo)}, venta ${R(p.precio)} (${mg}%)</div></div>
-        <div class="text-right font-bold ${low ? 'text-rose-600' : 'text-emerald-700'}">${p.stock}/${p.min}</div></div>
-        <div class="flex gap-2 mt-3"><button class="btn2 flex-1" data-a="mas1" data-i="${p.id}">+1 Stock</button><button class="btn2 flex-1" data-a="recibir" data-i="${p.id}">Recibir</button><button class="btn2" data-a="editP" data-i="${p.id}">Editar</button><button class="btn2 text-rose-600" data-a="delP" data-i="${p.id}">✕</button></div></div>`;
+<div class="text-right font-bold ${low ? 'text-rose-600' : 'text-emerald-700'}">${p.stock}/${p.min}</div></div>
+<div class="flex gap-2 mt-3"><button class="btn2 flex-1" data-a="mas1" data-i="${p.id}">+1 Stock</button><button class="btn2 flex-1" data-a="recibir" data-i="${p.id}">Recibir</button><button class="btn2" data-a="editP" data-i="${p.id}">Editar</button><button class="btn2 text-rose-600" data-a="delP" data-i="${p.id}">✕</button></div></div>`;
     }).join('');
 }
-
 function vGas() {
   const l = [...D.gastos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 20);
   return `<div class="card space-y-3"><h2 class="font-bold">Nuevo gasto</h2>
-    <input id="g-c" list="gl" class="in" placeholder="Concepto (Delivery, Publicidad, Empaque…)"><datalist id="gl"><option value="Delivery"><option value="Publicidad"><option value="Empaque"><option value="Transporte"></datalist>
-    <input id="g-m" class="in" type="number" inputmode="decimal" placeholder="Monto RD$"><button class="btn" data-a="addG">Guardar gasto</button></div>`
+<input id="g-c" list="gl" class="in" placeholder="Concepto (Delivery, Publicidad, Empaque…)"><datalist id="gl"><option value="Delivery"><option value="Publicidad"><option value="Empaque"><option value="Transporte"></datalist>
+<input id="g-m" class="in" type="number" inputmode="decimal" placeholder="Monto RD$"><button class="btn" data-a="addG">Guardar gasto</button></div>`
     + l.map(g => `<div class="card flex justify-between items-center"><div><b>${esc(g.concepto)}</b><div class="text-sm text-slate-500">${fd(g.fecha)}</div></div><div>${R(g.monto)} <button data-a="delG" data-i="${g.id}" class="text-rose-600 px-2">✕</button></div></div>`).join('');
 }
-
 const vMas = () => ['clientes|👥 Clientes', 'ventas|🧾 Historial de ventas', 'ajustes|⚙️ Ajustes y respaldo']
   .map(s => { const [k, t] = s.split('|'); return `<button class="card w-full text-left text-lg font-semibold" data-a="go" data-i="${k}">${t}</button>`; }).join('');
-
 function vCli() {
   return `<div class="card space-y-3"><h2 class="font-bold">Nuevo cliente</h2>${fld('c-n', 'Nombre', '')}${fld('c-t', 'Teléfono / WhatsApp', '', 'tel')}<button class="btn" data-a="addC">Guardar cliente</button></div>`
     + D.clientes.map(c => {
@@ -191,26 +213,24 @@ function vCli() {
       return `<div class="card"><div class="flex justify-between"><div><b>${esc(c.nombre)}</b><div class="text-sm text-slate-500">${esc(c.tel || 'Sin teléfono')}</div></div><div class="text-right ${deb ? 'text-rose-600 font-semibold' : 'text-slate-400'}">${deb ? 'Debe ' + R(deb) : 'Al día'}</div></div>${pend.length ? `<details class="mt-2"><summary class="btn2 cursor-pointer">Ver lo que debe</summary>${pend.map(detalle).join('')}</details>` : ''}</div>`;
     }).join('');
 }
-
 function vVen() {
   return D.ventas.slice(0, 40).map(v => {
     const c = cli(v.cliente), venc = v.estado === 'Por Cobrar' && v.vence < hoy();
     return `<div class="card ${v.estado === 'Cancelada' ? 'opacity-70' : ''}"><div class="flex justify-between"><b>${v.num}</b><b class="${v.estado === 'Cancelada' ? 'line-through text-slate-400' : ''}">${R(v.total)}</b></div>
-      <div class="text-sm text-slate-500">${fd(v.fecha)}, ${esc(c ? c.nombre : 'Cliente general')}, ${v.metodo}</div>
-      <div class="mt-1">${v.estado === 'Cancelada' ? badge('CANCELADA', 'bg-rose-600 text-white font-bold') : badge(v.estado, v.estado === 'Pagado' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')} ${venc ? badge('Vencida', 'bg-rose-100 text-rose-700') : ''}</div>
-      <details class="mt-2"><summary class="text-emerald-700 font-semibold cursor-pointer">Ver detalle</summary>${detalle(v)}</details>
-      <div class="flex gap-2 mt-3"><button class="btn2 flex-1" data-a="rec" data-i="${v.id}">Recibo</button>${v.estado === 'Cancelada' ? '' : `<button class="btn2 text-rose-600" data-a="anular" data-i="${v.id}">Cancelar factura</button>`}</div></div>`;
+<div class="text-sm text-slate-500">${fd(v.fecha)}, ${esc(c ? c.nombre : 'Cliente general')}, ${v.metodo}</div>
+<div class="mt-1">${v.estado === 'Cancelada' ? badge('CANCELADA', 'bg-rose-600 text-white font-bold') : badge(v.estado, v.estado === 'Pagado' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')} ${venc ? badge('Vencida', 'bg-rose-100 text-rose-700') : ''}</div>
+<details class="mt-2"><summary class="text-emerald-700 font-semibold cursor-pointer">Ver detalle</summary>${detalle(v)}</details>
+<div class="flex gap-2 mt-3"><button class="btn2 flex-1" data-a="rec" data-i="${v.id}">Recibo</button>${v.estado === 'Cancelada' ? '' : `<button class="btn2 text-rose-600" data-a="anular" data-i="${v.id}">Cancelar factura</button>`}</div></div>`;
   }).join('') || '<p class="text-slate-500">Aún no hay ventas.</p>';
 }
-
 function vAj() {
   const c = D.cfg;
   return `<div class="card space-y-3"><h2 class="font-bold">Mi negocio</h2>${fld('a-n', 'Nombre', c.nombre)}${fld('a-r', 'RNC', c.rnc)}${fld('a-t', 'Teléfono', c.tel)}${fld('a-i', 'ITBIS (%)', c.itbis, 'number')}${fld('a-u', 'Enlace de la nube (Google)', c.nubeUrl || '')}${fld('a-k', 'Clave secreta de la nube', c.nubeClave || '')}<button class="btn" data-a="saveCfg">Guardar</button></div>
-    <div class="card space-y-3"><h2 class="font-bold">Respaldo de datos</h2><p class="text-sm text-slate-500">Tus datos viven en este teléfono. Envíate el respaldo a tu correo o WhatsApp con frecuencia.</p>
-    <button class="btn" data-a="sync">Enviar ahora a mi hoja de Google y correo</button><p class="text-xs text-slate-500">${c.nubeUlt ? 'Última copia en la nube: ' + esc(c.nubeUlt) : 'Aún no has enviado copia a la nube.'}</p><button class="btn2 w-full" data-a="nube">Restaurar desde la nube</button><button class="btn2 w-full" data-a="bk">Compartir respaldo (WhatsApp…)</button><button class="btn2 w-full" data-a="dl">Descargar respaldo</button><button class="btn2 w-full" data-a="rs">Restaurar respaldo</button>
-    <input id="rf" type="file" accept=".json,application/json" hidden></div>`;
+<div class="card space-y-3"><h2 class="font-bold">Respaldo de datos</h2><p class="text-sm text-slate-500">Tus datos viven en este teléfono. Envíate el respaldo a tu correo o WhatsApp con frecuencia.</p>
+<button class="btn" data-a="sync">Enviar ahora a mi hoja de Google y correo</button><p class="text-xs text-slate-500">${c.nubeUlt ? 'Última copia en la nube: ' + esc(c.nubeUlt) : 'Aún no has enviado copia a la nube.'}</p><button class="btn2 w-full" data-a="nube">Restaurar desde la nube</button><button class="btn2 w-full" data-a="bk">Compartir respaldo (WhatsApp…)</button><button class="btn2 w-full" data-a="dl">Descargar respaldo</button><button class="btn2 w-full" data-a="rs">Restaurar respaldo</button>
+<input id="rf" type="file" accept=".json,application/json" hidden></div>
+<button class="btn2 w-full text-rose-600" data-a="logout">Cerrar sesión</button>`;
 }
-
 function render() {
   $('#tt').textContent = D.cfg.nombre;
   const vs = {inicio: vInicio, vender: vVender, inventario: vInv, gastos: vGas, mas: vMas, clientes: vCli, ventas: vVen, ajustes: vAj};
@@ -218,11 +238,9 @@ function render() {
   $('#v').innerHTML = back + vs[tab]();
   $('#nav').innerHTML = TABS.map(([k, e, t]) => `<button data-a="go" data-i="${k}" class="py-2 ${tab === k ? 'text-emerald-700 font-bold' : 'text-slate-500'}"><div class="text-xl">${e}</div><div class="text-xs">${t}</div></button>`).join('');
 }
-
 /* ===== ACCIONES ===== */
 const g = id => $('#' + id).value;
 function compra(p, cant, costo) { D.compras.push({id: uid(), fecha: hoy(), pid: p.id, nombre: p.nombre, cant, costo}); }
-
 function vender() {
   if (!cart.length) return toast('Agrega al menos un artículo');
   for (const i of cart) { if (i.libre) continue; const p = D.productos.find(x => x.id === i.id); if (!p || p.stock < i.cant) return toast('Stock insuficiente de ' + i.nombre); }
@@ -241,7 +259,6 @@ function vender() {
   render(); toast('Venta ' + num + ' registrada');
   if (confirm('¿Imprimir el recibo?')) imprimir(v.id);
 }
-
 function imprimir(id) {
   const v = D.ventas.find(x => x.id === id), c = cli(v.cliente), W = 32, L = '-'.repeat(W);
   const cen = t => ' '.repeat(Math.max(0, (W - t.length) >> 1)) + t;
@@ -249,14 +266,13 @@ function imprimir(id) {
   const f2 = n => (+n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const t = [cen(D.cfg.nombre.slice(0, W)), D.cfg.rnc && cen('RNC ' + D.cfg.rnc), D.cfg.tel && cen('Tel ' + D.cfg.tel), L,
     lin(v.num, fd(v.fecha)), 'Cliente: ' + (c ? c.nombre : 'General'), L,
-    ...v.items.flatMap(i => [...(i.nombre.match(/.{1,32}/g) || [i.nombre]), lin(' ' + i.cant + ' x ' + f2(i.precio), f2(i.cant * i.precio))]), L,
+...v.items.flatMap(i => [...(i.nombre.match(/.{1,32}/g) || [i.nombre]), lin(' ' + i.cant + ' x ' + f2(i.precio), f2(i.cant * i.precio))]), L,
     lin('Subtotal', f2(v.sub)), v.itbis && lin('ITBIS', f2(v.itbis)), lin('TOTAL', f2(v.total)), L,
     v.estado === 'Cancelada' ? cen('*** CANCELADA ***') : v.estado === 'Pagado' ? 'Pagado (' + v.metodo + ')' : 'A CREDITO, vence ' + fd(v.vence),
     cen('Gracias por su compra'), cen('Recibo no fiscal')].filter(Boolean);
   $('#rec').textContent = t.join('\n') + '\n\n\n\n';
   setTimeout(() => window.print(), 50);
 }
-
 function nubePush(manual) {
   const c = D.cfg;
   if (!c.nubeUrl) { if (manual) toast('Primero pega el enlace de la nube en Ajustes'); return; }
@@ -264,7 +280,6 @@ function nubePush(manual) {
     .then(() => { c.nubeUlt = new Date().toLocaleString('es-DO'); Store.save(D); if (manual) { toast('Copia enviada. Revisa tu hoja y tu correo'); if (tab === 'ajustes') render(); } })
     .catch(() => { if (manual) toast('Sin conexión. Intenta de nuevo'); });
 }
-
 async function nubePull() {
   const c = D.cfg;
   if (!c.nubeUrl) return toast('Primero pega el enlace de la nube en Ajustes');
@@ -277,13 +292,11 @@ async function nubePull() {
     Store.save(D); render(); toast('Datos restaurados desde la nube');
   } catch (e) { toast('No se pudo leer la copia. Revisa el enlace y la clave'); }
 }
-
 async function respaldo(compartir) {
   const f = new File([JSON.stringify(D, null, 2)], 'respaldo-' + hoy() + '.json', {type: 'application/json'});
   if (compartir && navigator.canShare && navigator.canShare({files: [f]})) { try { await navigator.share({files: [f], title: 'Respaldo ' + D.cfg.nombre}); } catch (e) {} return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click();
 }
-
 function restaurar(file) {
   if (!file) return;
   const r = new FileReader();
@@ -297,7 +310,6 @@ function restaurar(file) {
   };
   r.readAsText(file);
 }
-
 const A = {
   go: i => { tab = i; form = null; scrollTo(0, 0); render(); },
   addp: id => {
@@ -318,7 +330,7 @@ const A = {
   ver: () => { V.ver = !V.ver; render(); },
   per: i => { V.per = i; render(); },
   rm: i => { cart.splice(+i, 1); render(); },
-  vender,
+vender,
   pagar: id => { const v = D.ventas.find(x => x.id === id); v.estado = 'Pagado'; v.pagadoEl = hoy(); save(); render(); toast('Cobro registrado'); },
   nuevoP: () => { form = {nombre: '', cat: '', costo: '', precio: '', stock: '', min: 2}; render(); },
   editP: id => { form = {...D.productos.find(x => x.id === id)}; render(); },
@@ -365,9 +377,9 @@ const A = {
   nube: nubePull,
   bk: () => respaldo(true),
   dl: () => respaldo(false),
-  rs: () => $('#rf').click()
+  rs: () => $('#rf').click(),
+  logout: async () => { if (!confirm('¿Cerrar sesión?')) return; await sb.auth.signOut(); location.reload(); }
 };
-
 document.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b && A[b.dataset.a]) A[b.dataset.a](b.dataset.i, b); });
 document.addEventListener('input', e => { const t = e.target; if (t.dataset.k) V[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; if (t.dataset.k === 'bq') $('#res').innerHTML = resultados(); });
 document.addEventListener('change', e => {
@@ -375,7 +387,41 @@ document.addEventListener('change', e => {
   if (t.dataset.k) { V[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; if (t.hasAttribute('data-r')) render(); }
   if (t.id === 'rf') restaurar(t.files[0]);
 });
-render();
+/* ===== AUTENTICACIÓN Y ARRANQUE ===== */
+function authMsg(m) { $('#au-msg').textContent = m; }
+async function iniciarSesionApp() {
+  $('#auth').style.display = 'none';
+  const cloud = await cloudPull();
+  if (cloud) {
+    D = Object.assign(seed(), cloud);
+    D.cfg = Object.assign(seed().cfg, D.cfg);
+    Store.save(D);
+  } else {
+    await cloudPush();
+  }
+  render();
+}
+$('#au-in').addEventListener('click', async () => {
+  const email = g('au-e').trim(), pass = g('au-p');
+  if (!email || !pass) return authMsg('Escribe tu correo y contraseña');
+  authMsg('Entrando…');
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) authMsg('Correo o contraseña incorrectos');
+});
+$('#au-up').addEventListener('click', async () => {
+  const email = g('au-e').trim(), pass = g('au-p');
+  if (!email || !pass) return authMsg('Escribe tu correo y contraseña');
+  if (pass.length < 6) return authMsg('La contraseña debe tener al menos 6 caracteres');
+  authMsg('Creando cuenta…');
+  const { data, error } = await sb.auth.signUp({ email, password: pass });
+  if (error) return authMsg(error.message.includes('already') ? 'Ese correo ya tiene cuenta, usa Entrar' : 'No se pudo crear la cuenta');
+  if (data.session) return; // onAuthStateChange se encarga
+  authMsg('Cuenta creada. Revisa tu correo para confirmar y luego entra.');
+});
+sb.auth.onAuthStateChange((event, session) => {
+  if (session) iniciarSesionApp();
+  else { $('#auth').style.display = 'flex'; authMsg(''); }
+});
 </script>
 </body>
 </html>
