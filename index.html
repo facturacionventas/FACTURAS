@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#065f46">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="Variedades J&amp;T">
 <title>Variedades J&amp;T</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -13,9 +17,34 @@ body{-webkit-tap-highlight-color:transparent}
 .btn{display:block;width:100%;padding:.9rem;border-radius:.75rem;font-weight:700;background:#059669;color:#fff}
 .btn2{padding:.6rem .8rem;border-radius:.6rem;font-weight:600;background:#e5e7eb;font-size:.9rem;text-align:center}
 .card{background:#fff;border-radius:1rem;padding:1rem;box-shadow:0 1px 2px rgba(0,0,0,.06)}
-#rec{display:none;white-space:pre}
-@media print{body>*:not(#rec){display:none!important}#rec{display:block;width:48mm;font:9px/1.3 monospace;color:#000}@page{size:58mm auto;margin:2mm}}
+#rec,#fac{display:none}
+#rec{white-space:pre}
+#fac{color:#000;background:#fff;font:13px/1.45 Arial,Helvetica,sans-serif}
+#fac .fh{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:12px}
+#fac h1{font-size:22px;margin:0 0 4px}
+#fac h2{font-size:20px;margin:0 0 4px;letter-spacing:2px}
+#fac .fr{text-align:right}
+#fac .fc{margin:0 0 12px;font-size:14px}
+#fac table{width:100%;border-collapse:collapse}
+#fac .ft th{border-bottom:1.5px solid #000;padding:6px 4px;text-align:left;font-size:12px;text-transform:uppercase}
+#fac .ft td{border-bottom:1px solid #bbb;padding:6px 4px;vertical-align:top}
+#fac tr{page-break-inside:avoid}
+#fac .r,#fac .ft th.r{text-align:right}
+#fac .fs{width:45%;margin:12px 0 0 auto}
+#fac .fs td{padding:3px 4px}
+#fac .fs .tot td{border-top:2px solid #000;font-weight:700;font-size:16px;padding-top:6px}
+#fac .fe{margin-top:16px;font-weight:700}
+#fac .fx{margin:10px 0;font-size:28px;font-weight:700;letter-spacing:4px;text-align:center;border:3px solid #000;padding:6px}
+#fac .fp{margin-top:28px;text-align:center;font-size:12px}
+@media print{
+  body>*:not(#rec):not(#fac){display:none!important}
+  body{padding:0!important;background:#fff!important}
+  body.pt #fac,body.pc #rec{display:none!important}
+  body.pt #rec{display:block;width:48mm;font:9px/1.3 monospace;color:#000}
+  body.pc #fac{display:block}
+}
 </style>
+<style id="pg"></style>
 </head>
 <body class="bg-slate-100 text-slate-800 pb-24">
 <div id="auth" class="fixed inset-0 bg-emerald-800 flex items-center justify-center p-4 z-50">
@@ -26,17 +55,19 @@ body{-webkit-tap-highlight-color:transparent}
     <input id="au-p" class="in" type="password" placeholder="Contraseña" autocomplete="current-password">
     <button id="au-in" class="btn">Entrar</button>
     <button id="au-up" class="btn2 w-full">Crear cuenta nueva</button>
+    <button id="au-fp" class="text-sm text-emerald-700 underline w-full text-center">¿Olvidaste tu contraseña?</button>
     <p id="au-msg" class="text-sm text-center min-h-[1.25rem]"></p>
   </div>
 </div>
 <header class="sticky top-0 z-10 bg-emerald-800 text-white px-4 py-3 flex justify-between items-center">
-  <h1 id="tt" class="font-bold truncate"></h1>
+  <div class="min-w-0"><h1 id="tt" class="font-bold truncate cursor-pointer" data-a="go" data-i="inicio" role="button" title="Ir al Inicio"></h1><div id="sy" class="text-[11px] text-emerald-200"></div></div>
   <button data-a="go" data-i="mas" class="text-2xl px-2" aria-label="Más opciones">☰</button>
 </header>
 <main id="v" class="p-4 space-y-4 max-w-xl mx-auto"></main>
 <nav id="nav" class="fixed bottom-0 inset-x-0 bg-white border-t grid grid-cols-4 pb-[env(safe-area-inset-bottom)]"></nav>
 <div id="ts" class="fixed left-1/2 -translate-x-1/2 bottom-24 bg-slate-900 text-white px-4 py-2 rounded-xl opacity-0 transition-opacity pointer-events-none z-20"></div>
 <div id="rec"></div>
+<div id="fac"></div>
 <script>
 /* ===== CAPA DE DATOS =====
 Todo el acceso a datos pasa por Store. Para conectar Supabase o Firebase,
@@ -52,11 +83,15 @@ por Row Level Security: solo el dueño de la cuenta puede leerla o escribirla. *
 const SUPABASE_URL = 'https://uukxpwaqrnxdxkclduru.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-iZx14g12WjtAX2OtUerTA_0Jrzmn3w';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let cloudT;
+let cloudT, dirty = false;
+function syncEstado(t) { const s = $('#sy'); if (s) s.textContent = t; }
 async function cloudPush() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return;
-  await sb.from('negocio_data').upsert({ user_id: user.id, data: D, actualizado_en: new Date().toISOString() });
+  syncEstado('Guardando…');
+  const { error } = await sb.from('negocio_data').upsert({ user_id: user.id, data: D, actualizado_en: new Date().toISOString() });
+  if (error) { dirty = true; syncEstado('⚠ Sin conexión, pendiente de guardar'); }
+  else { dirty = false; syncEstado('Sincronizado ✓'); }
 }
 async function cloudPull() {
   const { data: { user } } = await sb.auth.getUser();
@@ -65,8 +100,10 @@ async function cloudPull() {
   if (error || !data) return null;
   return data.data;
 }
+window.addEventListener('online', () => { if (dirty) cloudPush(); });
+window.addEventListener('offline', () => syncEstado('⚠ Sin conexión'));
 const seed = () => ({
-  cfg: {nombre: 'Variedades J&T', rnc: '', tel: '', itbis: 18, seq: 1},
+  cfg: {nombre: 'Variedades J&T', rnc: '', tel: '', itbis: 18, seq: 1, formato: 'ticket'},
   productos: [
     {id: 'p1', nombre: 'Lámpara de Mesa', cat: 'Iluminación', costo: 450, precio: 850, stock: 12, min: 3},
     {id: 'p2', nombre: 'Organizador de Cocina', cat: 'Cocina', costo: 300, precio: 600, stock: 8, min: 4},
@@ -80,6 +117,7 @@ if (D.cfg.nombre === 'Mi Negocio del Hogar') D.cfg.nombre = 'Variedades J&T';
 let syncT;
 const save = () => {
   Store.save(D);
+  syncEstado('Pendiente de guardar…');
   clearTimeout(syncT); if (D.cfg.nubeUrl) syncT = setTimeout(() => nubePush(false), 4000);
   clearTimeout(cloudT); cloudT = setTimeout(cloudPush, 1500);
 };
@@ -103,7 +141,7 @@ const fld = (id, l, v, t = 'text') => `<label class="block text-sm font-semibold
 /* ===== ESTADO DE LA INTERFAZ ===== */
 const TABS = [['inicio', '🏠', 'Inicio'], ['vender', '🛒', 'Vender'], ['inventario', '📦', 'Inventario'], ['gastos', '💸', 'Gastos']];
 let tab = 'inicio', cart = [], form = null;
-let V = {per: 'mes', ver: false, bq: '', qn: '', qc: 1, qp: '', qk: '', q: 1, cliente: '', estado: 'Pagado', dias: 15, metodo: 'Efectivo', itbis: false, nom: '', tel: ''};
+let V = {per: 'mes', ver: false, bq: '', qn: '', qc: 1, qp: '', qk: '', q: 1, cliente: '', estado: 'Pagado', dias: 15, metodo: 'Efectivo', imp: '', itbis: false, nom: '', tel: '', vq: '', cq: ''};
 /* ===== VISTAS ===== */
 const detalle = v => `<div class="mt-2 rounded-xl bg-slate-50 p-3 text-sm">
 <div class="text-xs text-slate-500 mb-1">${v.num}, ${fd(v.fecha)}</div>
@@ -120,7 +158,7 @@ function vInicio() {
   const com = sum(D.compras.filter(c => enPer(c.fecha)), c => c.cant * c.costo);
   const bruta = ven - cos, gan = bruta - gas;
   const cx = ok.filter(v => v.estado === 'Por Cobrar').sort((a, b) => a.vence.localeCompare(b.vence));
-  const vc = cx.filter(v => v.vence < h), bajo = D.productos.filter(p => p.stock <= p.min);
+  const vc = cx.filter(v => v.vence < h), bajo = D.productos.filter(p => p.min > 0 && p.stock <= p.min);
   const pag = vs.filter(v => v.estado === 'Pagado');
   const efe = sum(pag.filter(v => v.metodo === 'Efectivo'), v => v.total), tra = sum(pag.filter(v => v.metodo === 'Transferencia'), v => v.total);
   const dias = [...Array(7)].map((_, k) => sumar(h, k - 6));
@@ -135,7 +173,7 @@ function vInicio() {
     const wa = c && c.tel ? `<a class="btn2" href="https://wa.me/1${c.tel.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent('Hola ' + c.nombre + ', le recordamos su pendiente de ' + R(v.total) + ' (' + v.num + ').')}">WhatsApp</a>` : '';
     return `<div class="border-b py-3"><div class="flex justify-between"><b>${esc(c ? c.nombre : 'Cliente')}</b><b>${R(v.total)}</b></div>
 <div class="text-sm text-slate-500">${v.num}, vence ${fd(v.vence)} ${venc ? badge('Vencida', 'bg-rose-100 text-rose-700') : ''}</div>
-<details class="mt-2"><summary class="btn2 cursor-pointer">Ver factura (qué compró)</summary>${detalle(v)}<button class="btn2 w-full mt-2" data-a="rec" data-i="${v.id}">Imprimir recibo</button></details>
+<details class="mt-2"><summary class="btn2 cursor-pointer">Ver factura (qué compró)</summary>${detalle(v)}<div class="flex gap-2 mt-2"><button class="btn2 flex-1" data-a="recT" data-i="${v.id}">Ticket 58 mm</button><button class="btn2 flex-1" data-a="recC" data-i="${v.id}">Factura carta</button></div></details>
 <div class="flex gap-2 mt-2"><button class="btn2 flex-1" data-a="pagar" data-i="${v.id}">Marcar como Pagado</button>${wa}</div></div>`;
   }).join('') || '<p class="text-slate-500">Sin cuentas pendientes 🎉</p>';
   const ph = PER[V.per][1];
@@ -149,6 +187,7 @@ function vInicio() {
     + `<div class="card"><h2 class="font-bold mb-2">Alertas de Stock</h2>${bajo.map(p => `<div class="flex justify-between py-1"><span>${esc(p.nombre)}</span><b class="text-rose-600">${p.stock}/${p.min}</b></div>`).join('') || '<p class="text-slate-500">Todo el inventario está bien 👍</p>'}</div>`
     + `<div class="card"><h2 class="font-bold">Cuentas por Cobrar</h2>${cxHtml}</div>`;
 }
+const fmt = () => V.imp || D.cfg.formato || 'ticket';
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 function resultados() {
   const q = norm(V.bq);
@@ -170,10 +209,11 @@ function vVender() {
 <label class="flex items-center gap-3 text-sm font-semibold">Cantidad<input class="in !w-24" type="number" min="1" inputmode="numeric" data-k="q" value="${V.q}"></label>
 <button class="btn2 w-full" data-a="ver">${V.ver ? '▴ Ocultar artículos' : '▾ Ver artículos'}</button>
 <div id="res" class="space-y-2">${resultados()}</div>
-<details class="rounded-xl border p-3" ${cart.some(i => i.libre) || V.qn ? 'open' : ''}><summary class="font-semibold">⚡ Factura rápida (sin crear producto)</summary>
+<details class="rounded-xl border p-3" ${cart.some(i => i.libre) || V.qn ? 'open' : ''}><summary class="font-semibold">⚡ Factura rápida (se guarda en Inventario)</summary>
 <div class="space-y-2 mt-3"><input class="in" data-k="qn" placeholder="Nombre del artículo o servicio" value="${esc(V.qn)}">
 <div class="grid grid-cols-3 gap-2"><input class="in" type="number" min="1" inputmode="numeric" data-k="qc" placeholder="Cant." value="${V.qc}"><input class="in" type="number" inputmode="decimal" data-k="qp" placeholder="Precio" value="${esc(V.qp)}"><input class="in" type="number" inputmode="decimal" data-k="qk" placeholder="Costo (opc.)" value="${esc(V.qk)}"></div>
-<button class="btn2 w-full" data-a="addq">Agregar a la factura</button></div></details>
+<button class="btn2 w-full" data-a="addq">Agregar a la factura</button>
+<p class="text-xs text-slate-500">Si el artículo no existe, se crea en Inventario con existencia 0. Si ya existe, se usa el mismo.</p></div></details>
     ${cart.map((i, n) => `<div class="flex justify-between items-center border-b py-2"><span>${i.cant} × ${esc(i.nombre)}</span><span>${R(i.cant * i.precio)} <button data-a="rm" data-i="${n}" class="text-rose-600 px-2">✕</button></span></div>`).join('')}
     ${sel('cliente', cl, V.cliente)}
     ${V.cliente === '__n' ? `<input class="in" data-k="nom" placeholder="Nombre del cliente" value="${esc(V.nom)}"><input class="in" type="tel" data-k="tel" placeholder="Teléfono / WhatsApp" value="${esc(V.tel)}">` : ''}
@@ -181,6 +221,7 @@ function vVender() {
     ${cred ? sel('dias', [[8, 'Vence en 8 días'], [15, 'Vence en 15 días'], [30, 'Vence en 30 días']], V.dias) : ''}
     ${sel('metodo', [['Efectivo', 'Efectivo'], ['Transferencia', 'Transferencia']], V.metodo)}
 <label class="flex gap-2 items-center"><input type="checkbox" data-k="itbis" data-r ${V.itbis ? 'checked' : ''}> Aplicar ITBIS (${D.cfg.itbis}%)</label>
+    <label class="block text-sm font-semibold">Al terminar, imprimir en:${sel('imp', [['ticket', 'Ticket 58 mm (impresora de bolsillo)'], ['carta', 'Factura tamaño carta (impresora grande)']], fmt())}</label>
 <div class="flex justify-between font-bold text-lg"><span>Total</span><span>${R(t.total)}</span></div>
 <button class="btn" data-a="vender">Registrar Venta</button></div>`;
 }
@@ -191,7 +232,7 @@ function vInv() {
       ${fld('f-n', 'Nombre', f.nombre)}${fld('f-c', 'Categoría', f.cat)}${fld('f-co', 'Costo de compra (RD$)', f.costo, 'number')}${fld('f-pr', 'Precio de venta (RD$)', f.precio, 'number')}${f.id ? '' : fld('f-s', 'Stock inicial', f.stock, 'number')}${fld('f-m', 'Stock mínimo', f.min, 'number')}
 <div class="flex gap-2"><button class="btn" data-a="saveP">Guardar</button><button class="btn2" data-a="cancel">Cancelar</button></div></div>` : '')
     + D.productos.map(p => {
-      const low = p.stock <= p.min, mg = p.precio ? Math.round((p.precio - p.costo) / p.precio * 100) : 0;
+      const low = p.min > 0 && p.stock <= p.min, mg = p.precio ? Math.round((p.precio - p.costo) / p.precio * 100) : 0;
       return `<div class="card"><div class="flex justify-between"><div><b>${esc(p.nombre)}</b><div class="text-sm text-slate-500">${esc(p.cat)}, costo ${R(p.costo)}, venta ${R(p.precio)} (${mg}%)</div></div>
 <div class="text-right font-bold ${low ? 'text-rose-600' : 'text-emerald-700'}">${p.stock}/${p.min}</div></div>
 <div class="flex gap-2 mt-3"><button class="btn2 flex-1" data-a="mas1" data-i="${p.id}">+1 Stock</button><button class="btn2 flex-1" data-a="recibir" data-i="${p.id}">Recibir</button><button class="btn2" data-a="editP" data-i="${p.id}">Editar</button><button class="btn2 text-rose-600" data-a="delP" data-i="${p.id}">✕</button></div></div>`;
@@ -207,28 +248,39 @@ function vGas() {
 const vMas = () => ['clientes|👥 Clientes', 'ventas|🧾 Historial de ventas', 'ajustes|⚙️ Ajustes y respaldo']
   .map(s => { const [k, t] = s.split('|'); return `<button class="card w-full text-left text-lg font-semibold" data-a="go" data-i="${k}">${t}</button>`; }).join('');
 function vCli() {
+  const q = norm(V.cq);
+  const lista = D.clientes.filter(c => !q || norm(c.nombre + ' ' + (c.tel || '')).includes(q));
   return `<div class="card space-y-3"><h2 class="font-bold">Nuevo cliente</h2>${fld('c-n', 'Nombre', '')}${fld('c-t', 'Teléfono / WhatsApp', '', 'tel')}<button class="btn" data-a="addC">Guardar cliente</button></div>`
-    + D.clientes.map(c => {
+    + (D.clientes.length > 5 ? `<input class="in" type="search" data-k="cq" data-r placeholder="🔍 Buscar cliente" value="${esc(V.cq)}">` : '')
+    + lista.map(c => {
       const pend = D.ventas.filter(v => v.cliente === c.id && v.estado === 'Por Cobrar'), deb = pend.reduce((s, v) => s + v.total, 0);
       return `<div class="card"><div class="flex justify-between"><div><b>${esc(c.nombre)}</b><div class="text-sm text-slate-500">${esc(c.tel || 'Sin teléfono')}</div></div><div class="text-right ${deb ? 'text-rose-600 font-semibold' : 'text-slate-400'}">${deb ? 'Debe ' + R(deb) : 'Al día'}</div></div>${pend.length ? `<details class="mt-2"><summary class="btn2 cursor-pointer">Ver lo que debe</summary>${pend.map(detalle).join('')}</details>` : ''}</div>`;
-    }).join('');
+    }).join('') || '<p class="text-slate-500">Sin resultados.</p>';
 }
 function vVen() {
-  return D.ventas.slice(0, 40).map(v => {
+  const q = norm(V.vq);
+  const lista = D.ventas.filter(v => { if (!q) return true; const c = cli(v.cliente); return norm(v.num + ' ' + (c ? c.nombre : 'cliente general')).includes(q); }).slice(0, 60);
+  const buscador = D.ventas.length > 5 ? `<input class="in" type="search" data-k="vq" data-r placeholder="🔍 Buscar por cliente o número de factura" value="${esc(V.vq)}">` : '';
+  return buscador + (lista.map(v => {
     const c = cli(v.cliente), venc = v.estado === 'Por Cobrar' && v.vence < hoy();
     return `<div class="card ${v.estado === 'Cancelada' ? 'opacity-70' : ''}"><div class="flex justify-between"><b>${v.num}</b><b class="${v.estado === 'Cancelada' ? 'line-through text-slate-400' : ''}">${R(v.total)}</b></div>
 <div class="text-sm text-slate-500">${fd(v.fecha)}, ${esc(c ? c.nombre : 'Cliente general')}, ${v.metodo}</div>
 <div class="mt-1">${v.estado === 'Cancelada' ? badge('CANCELADA', 'bg-rose-600 text-white font-bold') : badge(v.estado, v.estado === 'Pagado' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')} ${venc ? badge('Vencida', 'bg-rose-100 text-rose-700') : ''}</div>
 <details class="mt-2"><summary class="text-emerald-700 font-semibold cursor-pointer">Ver detalle</summary>${detalle(v)}</details>
-<div class="flex gap-2 mt-3"><button class="btn2 flex-1" data-a="rec" data-i="${v.id}">Recibo</button>${v.estado === 'Cancelada' ? '' : `<button class="btn2 text-rose-600" data-a="anular" data-i="${v.id}">Cancelar factura</button>`}</div></div>`;
-  }).join('') || '<p class="text-slate-500">Aún no hay ventas.</p>';
+<div class="flex gap-2 mt-3"><button class="btn2 flex-1" data-a="recT" data-i="${v.id}">Ticket</button><button class="btn2 flex-1" data-a="recC" data-i="${v.id}">Carta</button>${v.estado === 'Cancelada' ? '' : `<button class="btn2 text-rose-600" data-a="anular" data-i="${v.id}">Cancelar factura</button>`}</div></div>`;
+  }).join('') || '<p class="text-slate-500">Sin resultados.</p>');
 }
 function vAj() {
   const c = D.cfg;
-  return `<div class="card space-y-3"><h2 class="font-bold">Mi negocio</h2>${fld('a-n', 'Nombre', c.nombre)}${fld('a-r', 'RNC', c.rnc)}${fld('a-t', 'Teléfono', c.tel)}${fld('a-i', 'ITBIS (%)', c.itbis, 'number')}${fld('a-u', 'Enlace de la nube (Google)', c.nubeUrl || '')}${fld('a-k', 'Clave secreta de la nube', c.nubeClave || '')}<button class="btn" data-a="saveCfg">Guardar</button></div>
-<div class="card space-y-3"><h2 class="font-bold">Respaldo de datos</h2><p class="text-sm text-slate-500">Tus datos viven en este teléfono. Envíate el respaldo a tu correo o WhatsApp con frecuencia.</p>
-<button class="btn" data-a="sync">Enviar ahora a mi hoja de Google y correo</button><p class="text-xs text-slate-500">${c.nubeUlt ? 'Última copia en la nube: ' + esc(c.nubeUlt) : 'Aún no has enviado copia a la nube.'}</p><button class="btn2 w-full" data-a="nube">Restaurar desde la nube</button><button class="btn2 w-full" data-a="bk">Compartir respaldo (WhatsApp…)</button><button class="btn2 w-full" data-a="dl">Descargar respaldo</button><button class="btn2 w-full" data-a="rs">Restaurar respaldo</button>
-<input id="rf" type="file" accept=".json,application/json" hidden></div>
+  return `<div class="card space-y-3"><h2 class="font-bold">Mi negocio</h2>${fld('a-n', 'Nombre', c.nombre)}${fld('a-r', 'RNC', c.rnc)}${fld('a-t', 'Teléfono', c.tel)}${fld('a-i', 'ITBIS (%)', c.itbis, 'number')}<label class="block text-sm font-semibold">Formato de impresión por defecto<select id="a-f" class="in mt-1 font-normal"><option value="ticket" ${c.formato !== 'carta' ? 'selected' : ''}>Ticket 58 mm (impresora de bolsillo)</option><option value="carta" ${c.formato === 'carta' ? 'selected' : ''}>Factura tamaño carta (impresora grande)</option></select></label><button class="btn" data-a="saveCfg">Guardar</button></div>
+<div class="card space-y-2"><h2 class="font-bold">Mi cuenta</h2><button class="btn2 w-full" data-a="chpass">Cambiar contraseña</button></div>
+<div class="card space-y-2"><h2 class="font-bold">Sincronización en la nube</h2><p class="text-sm text-emerald-700">✓ Tus datos se guardan automáticamente en la nube (Supabase) y se sincronizan entre tus dispositivos al iniciar sesión con tu cuenta.</p></div>
+<details class="card"><summary class="font-bold cursor-pointer">Respaldo adicional (opcional, a Google Sheets)</summary>
+<div class="space-y-3 mt-3">${fld('a-u', 'Enlace de la nube (Google)', c.nubeUrl || '')}${fld('a-k', 'Clave secreta de la nube', c.nubeClave || '')}<button class="btn2 w-full" data-a="saveCfg">Guardar enlace</button>
+<p class="text-sm text-slate-500">Esto es un respaldo EXTRA, separado de la sincronización principal. Solo úsalo si además quieres ver tus ventas en una hoja de Google.</p>
+<button class="btn" data-a="sync">Enviar ahora a mi hoja de Google y correo</button><p class="text-xs text-slate-500">${c.nubeUlt ? 'Última copia en la nube: ' + esc(c.nubeUlt) : 'Aún no has enviado copia a Google Sheets.'}</p><button class="btn2 w-full" data-a="nube">Restaurar desde Google Sheets</button></div></details>
+<div class="card space-y-2"><h2 class="font-bold">Respaldo manual (archivo)</h2><button class="btn2 w-full" data-a="bk">Compartir respaldo (WhatsApp…)</button><button class="btn2 w-full" data-a="dl">Descargar respaldo</button><button class="btn2 w-full" data-a="rs">Restaurar respaldo</button>
+<input id="rf" type="file" accept=".json,.txt,application/json,text/plain" hidden></div>
 <button class="btn2 w-full text-rose-600" data-a="logout">Cerrar sesión</button>`;
 }
 function render() {
@@ -257,22 +309,46 @@ function vender() {
   D.ventas.unshift(v); save();
   cart = []; V.cliente = ''; V.nom = ''; V.tel = ''; V.itbis = false;
   render(); toast('Venta ' + num + ' registrada');
-  if (confirm('¿Imprimir el recibo?')) imprimir(v.id);
+  if (confirm('¿Imprimir la factura (' + (fmt() === 'carta' ? 'tamaño carta' : 'ticket 58 mm') + ')?')) imprimir(v.id, fmt());
 }
-function imprimir(id) {
-  const v = D.ventas.find(x => x.id === id), c = cli(v.cliente), W = 32, L = '-'.repeat(W);
-  const cen = t => ' '.repeat(Math.max(0, (W - t.length) >> 1)) + t;
-  const lin = (a, b) => a + ' '.repeat(Math.max(1, W - a.length - b.length)) + b;
-  const f2 = n => (+n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  const t = [cen(D.cfg.nombre.slice(0, W)), D.cfg.rnc && cen('RNC ' + D.cfg.rnc), D.cfg.tel && cen('Tel ' + D.cfg.tel), L,
-    lin(v.num, fd(v.fecha)), 'Cliente: ' + (c ? c.nombre : 'General'), L,
-...v.items.flatMap(i => [...(i.nombre.match(/.{1,32}/g) || [i.nombre]), lin(' ' + i.cant + ' x ' + f2(i.precio), f2(i.cant * i.precio))]), L,
-    lin('Subtotal', f2(v.sub)), v.itbis && lin('ITBIS', f2(v.itbis)), lin('TOTAL', f2(v.total)), L,
-    v.estado === 'Cancelada' ? cen('*** CANCELADA ***') : v.estado === 'Pagado' ? 'Pagado (' + v.metodo + ')' : 'A CREDITO, vence ' + fd(v.vence),
-    cen('Gracias por su compra'), cen('Recibo no fiscal')].filter(Boolean);
-  $('#rec').textContent = t.join('\n') + '\n\n\n\n';
+const f2 = n => (+n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+function facturaHTML(v, c) {
+  const est = v.estado === 'Pagado' ? 'Pagado (' + esc(v.metodo) + ')' : v.estado === 'Por Cobrar' ? 'A crédito, vence ' + fd(v.vence) : '';
+  return `<div class="fh"><div><h1>${esc(D.cfg.nombre)}</h1>${D.cfg.rnc ? `<div>RNC: ${esc(D.cfg.rnc)}</div>` : ''}${D.cfg.tel ? `<div>Tel: ${esc(D.cfg.tel)}</div>` : ''}</div>
+<div class="fr"><h2>FACTURA</h2><div><b>${esc(v.num)}</b></div><div>Fecha: ${fd(v.fecha)}</div></div></div>
+${v.estado === 'Cancelada' ? '<div class="fx">CANCELADA</div>' : ''}
+<div class="fc"><b>Cliente:</b> ${esc(c ? c.nombre : 'Cliente general')}${c && c.tel ? ' &nbsp;|&nbsp; Tel: ' + esc(c.tel) : ''}</div>
+<table class="ft"><thead><tr><th style="width:9%">Cant.</th><th>Descripción</th><th class="r" style="width:20%">Precio</th><th class="r" style="width:20%">Importe</th></tr></thead>
+<tbody>${v.items.map(i => `<tr><td>${i.cant}</td><td>${esc(i.nombre)}</td><td class="r">${f2(i.precio)}</td><td class="r">${f2(i.cant * i.precio)}</td></tr>`).join('')}</tbody></table>
+<table class="fs"><tr><td>Subtotal</td><td class="r">${R(v.sub)}</td></tr>${v.itbis ? `<tr><td>ITBIS</td><td class="r">${R(v.itbis)}</td></tr>` : ''}<tr class="tot"><td>TOTAL</td><td class="r">${R(v.total)}</td></tr></table>
+${est ? `<div class="fe">Estado: ${est}</div>` : ''}
+<p class="fp">Gracias por su compra &mdash; Documento no fiscal</p>`;
+}
+function imprimir(id, f) {
+  f = f === 'carta' || f === 'ticket' ? f : fmt();
+  const v = D.ventas.find(x => x.id === id), c = cli(v.cliente), b = document.body;
+  b.classList.remove('pt', 'pc');
+  if (f === 'carta') {
+    $('#fac').innerHTML = facturaHTML(v, c);
+    $('#pg').textContent = '@page{size:letter;margin:14mm}';
+    b.classList.add('pc');
+  } else {
+    const W = 32, L = '-'.repeat(W);
+    const cen = t => ' '.repeat(Math.max(0, (W - t.length) >> 1)) + t;
+    const lin = (a, b2) => a + ' '.repeat(Math.max(1, W - a.length - b2.length)) + b2;
+    const t = [cen(D.cfg.nombre.slice(0, W)), D.cfg.rnc && cen('RNC ' + D.cfg.rnc), D.cfg.tel && cen('Tel ' + D.cfg.tel), L,
+      lin(v.num, fd(v.fecha)), 'Cliente: ' + (c ? c.nombre : 'General'), L,
+  ...v.items.flatMap(i => [...(i.nombre.match(/.{1,32}/g) || [i.nombre]), lin(' ' + i.cant + ' x ' + f2(i.precio), f2(i.cant * i.precio))]), L,
+      lin('Subtotal', f2(v.sub)), v.itbis && lin('ITBIS', f2(v.itbis)), lin('TOTAL', f2(v.total)), L,
+      v.estado === 'Cancelada' ? cen('*** CANCELADA ***') : v.estado === 'Pagado' ? 'Pagado (' + v.metodo + ')' : 'A CREDITO, vence ' + fd(v.vence),
+      cen('Gracias por su compra'), cen('Recibo no fiscal')].filter(Boolean);
+    $('#rec').textContent = t.join('\n') + '\n\n\n\n';
+    $('#pg').textContent = '@page{size:58mm auto;margin:2mm}';
+    b.classList.add('pt');
+  }
   setTimeout(() => window.print(), 50);
 }
+window.addEventListener('afterprint', () => document.body.classList.remove('pt', 'pc'));
 function nubePush(manual) {
   const c = D.cfg;
   if (!c.nubeUrl) { if (manual) toast('Primero pega el enlace de la nube en Ajustes'); return; }
@@ -293,9 +369,24 @@ async function nubePull() {
   } catch (e) { toast('No se pudo leer la copia. Revisa el enlace y la clave'); }
 }
 async function respaldo(compartir) {
-  const f = new File([JSON.stringify(D, null, 2)], 'respaldo-' + hoy() + '.json', {type: 'application/json'});
-  if (compartir && navigator.canShare && navigator.canShare({files: [f]})) { try { await navigator.share({files: [f], title: 'Respaldo ' + D.cfg.nombre}); } catch (e) {} return; }
-  const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+  const txt = JSON.stringify(D, null, 2), nombre = 'respaldo-' + hoy() + '.json';
+  const descargar = () => {
+    const f = new File([txt], nombre, {type: 'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  };
+  if (!compartir) { descargar(); return toast('Respaldo descargado'); }
+  if (navigator.share && navigator.canShare) {
+    for (const tipo of ['application/json', 'text/plain']) {
+      const f = new File([txt], nombre, {type: tipo});
+      if (!navigator.canShare({files: [f]})) continue;
+      try { await navigator.share({files: [f], title: 'Respaldo ' + D.cfg.nombre}); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+  }
+  descargar();
+  alert('Este teléfono o navegador no permite compartir el archivo directamente. Se descargó el respaldo: búscalo en Descargas y envíalo por WhatsApp desde ahí.');
 }
 function restaurar(file) {
   if (!file) return;
@@ -315,16 +406,22 @@ const A = {
   addp: id => {
     const p = D.productos.find(x => x.id === id), q = parseInt(V.q) || 0;
     if (!p || q < 1) return toast('Escribe una cantidad válida');
-    const ya = cart.filter(i => i.id === p.id).reduce((s, i) => s + i.cant, 0);
+    const ya = cart.filter(i => i.id === p.id && !i.libre).reduce((s, i) => s + i.cant, 0);
     if (ya + q > p.stock) return toast('Stock insuficiente: quedan ' + (p.stock - ya));
-    const e = cart.find(i => i.id === p.id);
+    const e = cart.find(i => i.id === p.id && !i.libre);
     if (e) e.cant += q; else cart.push({id: p.id, nombre: p.nombre, cant: q, precio: p.precio, costo: p.costo});
     V.bq = ''; V.q = 1; V.ver = false; render(); $('#bq').focus();
   },
   addq: () => {
-    const n = V.qn.trim(), c = parseInt(V.qc) || 0, pr = parseFloat(V.qp) || 0;
+    const n = V.qn.trim(), c = parseInt(V.qc) || 0, pr = parseFloat(V.qp) || 0, ck = parseFloat(V.qk) || 0;
     if (!n || c < 1 || pr <= 0) return toast('Escribe nombre, cantidad y precio');
-    cart.push({id: null, libre: true, nombre: n, cant: c, precio: pr, costo: parseFloat(V.qk) || 0});
+    let p = D.productos.find(x => norm(x.nombre) === norm(n));
+    if (!p) {
+      p = {id: uid(), nombre: n, cat: '', costo: ck, precio: pr, stock: 0, min: 0};
+      D.productos.push(p); save(); toast('«' + n + '» se agregó al Inventario');
+    } else if (!p.costo && ck) { p.costo = ck; save(); }
+    const e = cart.find(i => i.libre && i.id === p.id && i.precio === pr);
+    if (e) e.cant += c; else cart.push({id: p.id, libre: true, nombre: p.nombre, cant: c, precio: pr, costo: ck || p.costo || 0});
     V.qn = ''; V.qc = 1; V.qp = ''; V.qk = ''; render();
   },
   ver: () => { V.ver = !V.ver; render(); },
@@ -362,15 +459,16 @@ vender,
     const n = g('c-n').trim(); if (!n) return toast('Escribe el nombre');
     D.clientes.push({id: uid(), nombre: n, tel: g('c-t').trim()}); save(); render();
   },
-  rec: imprimir,
+  recT: id => imprimir(id, 'ticket'),
+  recC: id => imprimir(id, 'carta'),
   anular: id => {
     const v = D.ventas.find(x => x.id === id);
     if (v.estado === 'Cancelada' || !confirm('¿Cancelar la factura ' + v.num + '? Se devuelve el stock y queda marcada como CANCELADA.')) return;
-    v.items.forEach(i => { const p = D.productos.find(x => x.id === i.id); if (p) p.stock += i.cant; });
+    v.items.forEach(i => { if (i.libre) return; const p = D.productos.find(x => x.id === i.id); if (p) p.stock += i.cant; });
     v.estado = 'Cancelada'; v.canceladaEl = hoy(); save(); render(); toast('Factura ' + v.num + ' cancelada');
   },
   saveCfg: () => {
-    D.cfg.nombre = g('a-n').trim() || 'Mi Negocio'; D.cfg.rnc = g('a-r').trim(); D.cfg.tel = g('a-t').trim(); D.cfg.itbis = +g('a-i') || 0; D.cfg.nubeUrl = g('a-u').trim(); D.cfg.nubeClave = g('a-k').trim();
+    D.cfg.nombre = g('a-n').trim() || 'Mi Negocio'; D.cfg.rnc = g('a-r').trim(); D.cfg.tel = g('a-t').trim(); D.cfg.itbis = +g('a-i') || 0; D.cfg.formato = g('a-f') === 'carta' ? 'carta' : 'ticket'; V.imp = ''; D.cfg.nubeUrl = g('a-u').trim(); D.cfg.nubeClave = g('a-k').trim();
     save(); render(); toast('Ajustes guardados');
   },
   sync: () => nubePush(true),
@@ -378,7 +476,14 @@ vender,
   bk: () => respaldo(true),
   dl: () => respaldo(false),
   rs: () => $('#rf').click(),
-  logout: async () => { if (!confirm('¿Cerrar sesión?')) return; await sb.auth.signOut(); location.reload(); }
+  logout: async () => { if (!confirm('¿Cerrar sesión?')) return; await sb.auth.signOut(); location.reload(); },
+  chpass: async () => {
+    const np = prompt('Nueva contraseña (mínimo 6 caracteres):');
+    if (!np) return;
+    if (np.length < 6) return toast('Debe tener al menos 6 caracteres');
+    const { error } = await sb.auth.updateUser({ password: np });
+    toast(error ? 'No se pudo cambiar la contraseña' : 'Contraseña actualizada');
+  }
 };
 document.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b && A[b.dataset.a]) A[b.dataset.a](b.dataset.i, b); });
 document.addEventListener('input', e => { const t = e.target; if (t.dataset.k) V[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; if (t.dataset.k === 'bq') $('#res').innerHTML = resultados(); });
@@ -400,13 +505,19 @@ async function iniciarSesionApp() {
     await cloudPush();
   }
   render();
+  syncEstado(navigator.onLine ? 'Sincronizado ✓' : '⚠ Sin conexión');
 }
 $('#au-in').addEventListener('click', async () => {
   const email = g('au-e').trim(), pass = g('au-p');
   if (!email || !pass) return authMsg('Escribe tu correo y contraseña');
+  if (!navigator.onLine) return authMsg('Sin conexión a internet, revisa tu wifi/datos');
   authMsg('Entrando…');
   const { error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if (error) authMsg('Correo o contraseña incorrectos');
+  if (error) {
+    if (/email not confirmed/i.test(error.message)) authMsg('Confirma tu correo primero (revisa tu bandeja de entrada)');
+    else if (/invalid login/i.test(error.message)) authMsg('Correo o contraseña incorrectos');
+    else authMsg('No se pudo entrar: ' + error.message);
+  }
 });
 $('#au-up').addEventListener('click', async () => {
   const email = g('au-e').trim(), pass = g('au-p');
@@ -418,10 +529,32 @@ $('#au-up').addEventListener('click', async () => {
   if (data.session) return; // onAuthStateChange se encarga
   authMsg('Cuenta creada. Revisa tu correo para confirmar y luego entra.');
 });
+$('#au-fp').addEventListener('click', async () => {
+  const email = g('au-e').trim();
+  if (!email) return authMsg('Escribe tu correo arriba primero');
+  authMsg('Enviando enlace…');
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.href });
+  authMsg(error ? 'No se pudo enviar el enlace' : 'Revisa tu correo para restablecer tu contraseña');
+});
 sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    const np = prompt('Escribe tu nueva contraseña (mínimo 6 caracteres):');
+    if (np && np.length >= 6) sb.auth.updateUser({ password: np }).then(({ error }) => toast(error ? 'No se pudo cambiar la contraseña' : 'Contraseña actualizada, ya puedes usarla'));
+    return;
+  }
   if (session) iniciarSesionApp();
   else { $('#auth').style.display = 'flex'; authMsg(''); }
 });
+/* ===== INSTALAR COMO APP (PWA ligera, sin archivos extra) ===== */
+(function () {
+  const icon = "data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><rect width='180' height='180' rx='28' fill='#065f46'/><text x='50%' y='58%' font-size='96' text-anchor='middle' dominant-baseline='middle'>🧾</text></svg>");
+  const manifest = { name: 'Variedades J&T', short_name: 'Variedades J&T', start_url: '.', display: 'standalone', background_color: '#065f46', theme_color: '#065f46', icons: [{ src: icon, sizes: '180x180', type: 'image/svg+xml' }] };
+  const mLink = document.createElement('link'); mLink.rel = 'manifest';
+  mLink.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
+  document.head.appendChild(mLink);
+  const iLink = document.createElement('link'); iLink.rel = 'apple-touch-icon'; iLink.href = icon;
+  document.head.appendChild(iLink);
+})();
 </script>
 </body>
 </html>
