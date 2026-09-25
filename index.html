@@ -247,8 +247,53 @@ function vGas() {
 <input id="g-m" class="in" type="number" inputmode="decimal" placeholder="Monto RD$"><button class="btn" data-a="addG">Guardar gasto</button></div>`
     + l.map(g => `<div class="card flex justify-between items-center"><div><b>${esc(g.concepto)}</b><div class="text-sm text-slate-500">${fd(g.fecha)}</div></div><div>${R(g.monto)} <button data-a="delG" data-i="${g.id}" class="text-rose-600 px-2">✕</button></div></div>`).join('');
 }
-const vMas = () => ['ventas|🧾 Historial de ventas', 'pagos|💵 Recibos de pago', 'ajustes|⚙️ Ajustes y respaldo']
+const vMas = () => ['ventas|🧾 Historial de ventas', 'pagos|💵 Recibos de pago', 'mov|📊 Movimiento de inventario', 'ajustes|⚙️ Ajustes y respaldo']
   .map(s => { const [k, t] = s.split('|'); return `<button class="card w-full text-left text-lg font-semibold" data-a="go" data-i="${k}">${t}</button>`; }).join('');
+function vMov() {
+  const activas = D.ventas.filter(v => v.estado !== 'Cancelada');
+  const porProd = {};
+  activas.forEach(v => v.items.forEach(i => {
+    const k = i.id || nk(i.nombre);
+    const e = porProd[k] || (porProd[k] = {nombre: i.nombre, cant: 0, gan: 0});
+    e.cant += i.cant; e.gan += (i.precio - (i.costo || 0)) * i.cant;
+  }));
+  const prods = Object.values(porProd);
+  const porVentas = [...prods].sort((a, b) => b.cant - a.cant);
+  const porGan = [...prods].sort((a, b) => b.gan - a.gan);
+
+  const porCli = {};
+  activas.forEach(v => {
+    const k = v.cliente || '__gen';
+    const e = porCli[k] || (porCli[k] = {nombre: v.cliente ? (cli(v.cliente) ? cli(v.cliente).nombre : 'Cliente') : 'Cliente general', total: 0, n: 0});
+    e.total += v.total; e.n++;
+  });
+  const clientes = Object.values(porCli).sort((a, b) => b.total - a.total);
+
+  const porPago = {};
+  D.pagos.forEach(p => {
+    const v = D.ventas.find(x => x.id === p.vid); if (!v || !v.vence) return;
+    const atraso = Math.round((new Date(p.fecha) - new Date(v.vence)) / 86400000);
+    const k = p.cliente || '__gen', c = cli(p.cliente);
+    const e = porPago[k] || (porPago[k] = {nombre: p.cliente ? (c ? c.nombre : 'Cliente') : 'Cliente general', dias: 0, n: 0});
+    e.dias += atraso; e.n++;
+  });
+  const fmtAtraso = d => d > 0 ? d + (d === 1 ? ' día de atraso' : ' días de atraso') : d < 0 ? Math.abs(d) + (d === -1 ? ' día antes' : ' días antes') : 'A tiempo';
+  const pagos = Object.values(porPago).map(x => ({...x, prom: Math.round(x.dias / x.n)})).sort((a, b) => a.prom - b.prom);
+
+  const fila = (t, v) => `<div class="flex justify-between border-b last:border-0 py-1.5"><span class="truncate pr-2">${esc(t)}</span><b class="whitespace-nowrap">${v}</b></div>`;
+  const bloque = (titulo, l, vacio) => `<div class="card"><h3 class="font-bold mb-1">${titulo}</h3>${l.length ? l.join('') : `<p class="text-slate-400 text-sm">${vacio}</p>`}</div>`;
+  const top = (arr, n) => arr.slice(0, n), bot = (arr, n) => [...arr].reverse().slice(0, n);
+
+  if (!activas.length) return '<p class="text-slate-500">Todavía no hay ventas para mostrar movimiento.</p>';
+  return bloque('🔥 Productos más vendidos', top(porVentas, 5).map(p => fila(p.nombre, p.cant + (p.cant === 1 ? ' unidad' : ' unidades'))), 'Sin datos')
+    + bloque('🐌 Productos menos vendidos', bot(porVentas, 5).map(p => fila(p.nombre, p.cant + (p.cant === 1 ? ' unidad' : ' unidades'))), 'Sin datos')
+    + bloque('💰 Los que más ganancia dejan', top(porGan, 5).map(p => fila(p.nombre, R(p.gan))), 'Sin datos')
+    + bloque('📉 Los que menos ganancia dejan', bot(porGan, 5).map(p => fila(p.nombre, R(p.gan))), 'Sin datos')
+    + bloque('⭐ Clientes que más te compran', top(clientes, 5).map(c => fila(c.nombre, R(c.total) + ' · ' + c.n)), 'Sin datos')
+    + bloque('💤 Clientes que menos te compran', bot(clientes, 5).map(c => fila(c.nombre, R(c.total) + ' · ' + c.n)), 'Sin datos')
+    + bloque('⚡ Clientes que más cumplen el plazo', top(pagos, 5).map(c => fila(c.nombre, fmtAtraso(c.prom))), 'Aún no hay pagos de facturas a crédito')
+    + bloque('🐢 Clientes que más se atrasan del plazo', bot(pagos, 5).map(c => fila(c.nombre, fmtAtraso(c.prom))), 'Aún no hay pagos de facturas a crédito');
+}
 function vCli() {
   const q = norm(V.cq);
   const deuda = c => D.ventas.filter(v => v.cliente === c.id && v.estado === 'Por Cobrar');
@@ -291,8 +336,8 @@ function vAj() {
 }
 function render() {
   $('#tt').textContent = D.cfg.nombre;
-  const vs = {inicio: vInicio, vender: vVender, inventario: vInv, gastos: vGas, mas: vMas, clientes: vCli, ventas: vVen, pagos: vPag, ajustes: vAj};
-  const back = ['ventas', 'pagos', 'ajustes'].includes(tab) ? '<button class="text-emerald-700 font-semibold" data-a="go" data-i="mas">← Volver</button>' : '';
+  const vs = {inicio: vInicio, vender: vVender, inventario: vInv, gastos: vGas, mas: vMas, clientes: vCli, ventas: vVen, pagos: vPag, mov: vMov, ajustes: vAj};
+  const back = ['ventas', 'pagos', 'mov', 'ajustes'].includes(tab) ? '<button class="text-emerald-700 font-semibold" data-a="go" data-i="mas">← Volver</button>' : '';
   $('#v').innerHTML = back + vs[tab]();
   $('#nav').innerHTML = TABS.map(([k, e, t]) => `<button data-a="go" data-i="${k}" class="py-2 ${tab === k ? 'text-emerald-700 font-bold' : 'text-slate-500'}"><div class="text-xl">${e}</div><div class="text-xs">${t}</div></button>`).join('');
 }
@@ -322,7 +367,8 @@ function vender() {
   D.ventas.unshift(v); save();
   cart = []; V.cliente = ''; V.nom = ''; V.tel = ''; V.itbis = false;
   render(); toast('Venta ' + num + ' registrada');
-  if (confirm('¿Imprimir la factura (' + (fmt() === 'carta' ? 'tamaño carta' : 'ticket 58 mm') + ')?')) imprimir(v.id, fmt());
+  if (fmt() === 'ticket') { if (confirm('¿Compartir la factura como imagen para tu impresora de bolsillo?')) compartirImagen(modeloFactura(v, 'ticket')); }
+  else if (confirm('¿Imprimir la factura (tamaño carta)?')) imprimir(v.id, 'carta');
 }
 const f2 = n => (+n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 const TW = 32, TL = '-'.repeat(TW);
@@ -357,9 +403,8 @@ function lanzar(f, carta, ticket, modelo) {
     }, 1500);
   }, 50);
 }
-function imprimir(id, f) {
-  f = f === 'carta' || f === 'ticket' ? f : fmt();
-  const v = D.ventas.find(x => x.id === id), c = cli(v.cliente);
+function modeloFactura(v, f) {
+  const c = cli(v.cliente);
   const est = v.estado === 'Pagado' ? 'Pagado (' + esc(v.metodo) + ')' : v.estado === 'Por Cobrar' ? 'A crédito, vence ' + fd(v.vence) : '';
   const carta = cabHTML('FACTURA', v.num, fd(v.fecha)) + (v.estado === 'Cancelada' ? '<div class="fx">CANCELADA</div>' : '')
     + `<div class="fc"><b>Cliente:</b> ${esc(c ? c.nombre : 'Cliente general')}${c && c.tel ? ' &nbsp;|&nbsp; Tel: ' + esc(c.tel) : ''}</div>` + itemsHTML(v)
@@ -369,27 +414,47 @@ function imprimir(id, f) {
     tlin('Subtotal', f2(v.sub)), v.itbis && tlin('ITBIS', f2(v.itbis)), tlin('TOTAL', f2(v.total)), TL,
     v.estado === 'Cancelada' ? tcen('*** CANCELADA ***') : v.estado === 'Pagado' ? 'Pagado (' + v.metodo + ')' : 'A CREDITO, vence ' + fd(v.vence),
     tcen('Gracias por su compra'), tcen('Recibo no fiscal')];
-  lanzar(f, carta, ticket, {
-    archivo: 'factura-' + v.num, titulo: 'FACTURA', num: v.num, fecha: fd(v.fecha), cancelada: v.estado === 'Cancelada', formato: f, ticket,
+  return {
+    carta, ticket, archivo: 'factura-' + v.num, titulo: 'FACTURA', num: v.num, fecha: fd(v.fecha), cancelada: v.estado === 'Cancelada', formato: f,
     lineas: [['Cliente', (c ? c.nombre : 'Cliente general') + (c && c.tel ? '   Tel: ' + c.tel : '')]], items: v.items,
     tots: [['Subtotal', R(v.sub)], ...(v.itbis ? [['ITBIS', R(v.itbis)]] : []), ['TOTAL', R(v.total)]],
     pie: [est ? 'Estado: ' + est.replace(/&amp;/g, '&') : '', 'Gracias por su compra - Documento no fiscal'].filter(Boolean)
-  });
+  };
 }
-function imprimirPago(pid, f) {
+function imprimir(id, f) {
   f = f === 'carta' || f === 'ticket' ? f : fmt();
-  const p = D.pagos.find(x => x.id === pid), v = D.ventas.find(x => x.id === p.vid), c = cli(p.cliente);
+  const m = modeloFactura(D.ventas.find(x => x.id === id), f);
+  lanzar(f, m.carta, m.ticket, m);
+}
+function modeloPago(p, f) {
+  const v = D.ventas.find(x => x.id === p.vid), c = cli(p.cliente);
   const nombre = c ? c.nombre : 'Cliente general', hora = p.hora ? ' ' + esc(p.hora) : '';
   const carta = cabHTML('RECIBO DE PAGO', p.num, fd(p.fecha) + hora)
     + `<div class="fc"><b>Recibimos de:</b> ${esc(nombre)}</div><div class="fc"><b>Concepto:</b> Pago de la factura ${esc(p.fnum)}${v ? ' del ' + fd(v.fecha) : ''}</div><div class="fc"><b>Forma de pago:</b> ${esc(p.metodo)}</div>`
     + (v ? itemsHTML(v) : '') + `<table class="fs"><tr class="tot"><td>TOTAL PAGADO</td><td class="r">${R(p.monto)}</td></tr></table><p class="fp">Gracias por su pago &mdash; Documento no fiscal</p>`;
   const ticket = [...cabTicket(), tcen('RECIBO DE PAGO'), tlin(p.num, fd(p.fecha)), 'Cliente: ' + nombre, 'Factura: ' + p.fnum, 'Forma de pago: ' + p.metodo, TL,
     ...(v ? [...itemsTicket(v), TL] : []), tlin('TOTAL PAGADO', f2(p.monto)), TL, tcen('Gracias por su pago'), tcen('Recibo no fiscal')];
-  lanzar(f, carta, ticket, {
-    archivo: 'recibo-' + p.num, titulo: 'RECIBO DE PAGO', num: p.num, fecha: fd(p.fecha) + (p.hora ? ' ' + p.hora : ''), cancelada: false, formato: f, ticket,
+  return {
+    carta, ticket, archivo: 'recibo-' + p.num, titulo: 'RECIBO DE PAGO', num: p.num, fecha: fd(p.fecha) + (p.hora ? ' ' + p.hora : ''), cancelada: false, formato: f,
     lineas: [['Recibimos de', nombre], ['Concepto', 'Pago de la factura ' + p.fnum + (v ? ' del ' + fd(v.fecha) : '')], ['Forma de pago', p.metodo]],
     items: v ? v.items : [], tots: [['TOTAL PAGADO', R(p.monto)]], pie: ['Gracias por su pago - Documento no fiscal']
-  });
+  };
+}
+function imprimirPago(pid, f) {
+  f = f === 'carta' || f === 'ticket' ? f : fmt();
+  const m = modeloPago(D.pagos.find(x => x.id === pid), f);
+  lanzar(f, m.carta, m.ticket, m);
+}
+function compartirImagen(m) {
+  (m.formato === 'ticket' ? dibujarTicketImg({...m, nombre: D.cfg.nombre}) : dibujarDoc(m)).toBlob(async blob => {
+    const f = new File([blob], m.archivo + '.png', {type: 'image/png'});
+    if (navigator.canShare && navigator.canShare({files: [f]})) {
+      try { await navigator.share({files: [f], title: m.titulo + ' ' + m.num}); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = m.archivo + '.png';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast('Imagen descargada: búscala en tus descargas o fotos');
+  }, 'image/png');
 }
 let IMPM = null;
 function modalImpresion() {
@@ -402,7 +467,7 @@ function modalImpresion() {
 <button class="btn" data-a="imgShare">📤 Compartir como imagen</button><button class="btn2 w-full" data-a="imgNo">Cerrar</button></div>`;
 }
 function dibujarTicketImg(m) {
-  const PXW = 384, M = 14, W = PXW - M * 2;
+  const PXW = 384, M = 12, W = PXW - M * 2;
   const ctxTmp = document.createElement('canvas').getContext('2d');
   const F = (px, b) => (b ? '700 ' : '400 ') + px + 'px Arial, Helvetica, sans-serif';
   const mw = (t, f) => { ctxTmp.font = f; return ctxTmp.measureText(t).width; };
@@ -417,42 +482,50 @@ function dibujarTicketImg(m) {
   };
   const ops = []; let y = M;
   const put = (txt, x, fs, bold, al) => { ops.push([txt, x, y, fs, bold, al || 'left']); };
-  const line = px => { y += Math.round(px * 1.32); };
-  const rule = () => { y += 6; ops.push(['-', M, y, 'rule']); y += 10; };
-  put(m.nombre, PXW / 2, 24, true, 'center'); line(24); y += 6;
-  rule();
-  put(m.titulo, M, 19, true); put(m.num, PXW - M, 19, true, 'right'); line(19);
-  put(m.fecha, M, 15, false); line(15); y += 4;
-  rule();
-  if (m.cancelada) { put('*** CANCELADA ***', PXW / 2, 22, true, 'center'); line(22); y += 4; rule(); }
+  const line = px => { y += Math.round(px * 1.38); };
+  const rule = grueso => { y += 8; ops.push(['-', M, y, 'rule', grueso || 3]); y += 12; };
+  put(m.nombre, PXW / 2, 34, true, 'center'); line(34); y += 8;
+  rule(4);
+  put(m.titulo, M, 26, true); line(26); y += 2;
+  put(m.num, M, 22, true); line(22);
+  put(m.fecha, M, 18, false); line(18); y += 4;
+  rule(4);
+  if (m.cancelada) { put('*** CANCELADA ***', PXW / 2, 26, true, 'center'); line(26); y += 4; rule(4); }
   m.lineas.forEach(([k, v]) => {
-    wrap(k + ': ' + v, F(16), W).forEach(l => { put(l, M, 16, false); line(16); });
+    wrap(k + ': ' + v, F(19), W).forEach(l => { put(l, M, 19, false); line(19); });
   });
-  y += 4; rule();
+  y += 6; rule(4);
   (m.items || []).forEach(i => {
-    wrap(i.nombre, F(17, true), W).forEach(l => { put(l, M, 17, true); line(17); });
-    put(i.cant + ' x ' + f2(i.precio), M, 15, false); put(f2(i.cant * i.precio), PXW - M, 17, true, 'right'); line(17); y += 4;
+    wrap(i.nombre, F(21, true), W).forEach(l => { put(l, M, 21, true); line(21); });
+    put(i.cant + ' x ' + f2(i.precio), M, 18, false);
+    put(f2(i.cant * i.precio), PXW - M, 24, true, 'right');
+    line(24); y += 12;
   });
-  rule();
+  rule(4);
   (m.tots || []).forEach(([k, v], idx) => {
-    const ult = idx === m.tots.length - 1, fs = ult ? 22 : 16;
-    put(k, M, fs, ult); put(v, PXW - M, fs, ult, 'right'); line(fs); y += ult ? 6 : 2;
+    const ult = idx === m.tots.length - 1, fs = ult ? 36 : 19;
+    put(k, M, fs, ult);
+    put(v, PXW - M, fs, ult, 'right');
+    line(fs); y += ult ? 12 : 6;
   });
-  y += 4; rule();
+  rule(4);
   (m.pie || []).forEach(l => {
-    wrap(l, F(15), W).forEach(t => { put(t, PXW / 2, 15, false, 'center'); line(15); });
+    wrap(l, F(17), W).forEach(t => { put(t, PXW / 2, 17, false, 'center'); line(17); });
   });
-  y += 10;
+  y += 14;
   const H = y;
   const cv = document.createElement('canvas'); cv.width = PXW; cv.height = H;
   const ctx = cv.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, PXW, H);
-  ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.textBaseline = 'top'; ctx.lineJoin = 'round';
   ops.forEach(o => {
-    if (o[3] === 'rule') { ctx.fillRect(o[1], o[2], PXW - M * 2, 2); return; }
+    if (o[3] === 'rule') { ctx.fillRect(o[1], o[2], PXW - M * 2, o[4]); return; }
     const [txt, x, ty, fs, bold, al] = o;
     ctx.font = (bold ? '700 ' : '400 ') + fs + 'px Arial, Helvetica, sans-serif';
-    ctx.textAlign = al || 'left'; ctx.fillText(txt, x, ty);
+    ctx.textAlign = al || 'left';
+    ctx.lineWidth = Math.max(1, Math.round(fs * (bold ? 0.05 : 0.035)));
+    ctx.strokeText(txt, x, ty);
+    ctx.fillText(txt, x, ty);
   });
   return cv;
 }
@@ -645,22 +718,14 @@ vender,
     D.pagos.unshift(pago);
     v.estado = 'Pagado'; v.pagadoEl = hoy(); v.metodo = PG.metodo; v.pagoId = pago.id;
     save(); PG = null; modalPago(); render(); toast('Pago registrado: ' + pago.num);
-    if (confirm('¿Imprimir el recibo de pago (' + (fmt() === 'carta' ? 'tamaño carta' : 'ticket 58 mm') + ')?')) imprimirPago(pago.id, fmt());
+    if (fmt() === 'ticket') { if (confirm('¿Compartir el recibo de pago como imagen para tu impresora de bolsillo?')) compartirImagen(modeloPago(pago, 'ticket')); }
+    else if (confirm('¿Imprimir el recibo de pago (tamaño carta)?')) imprimirPago(pago.id, 'carta');
   },
   imgNo: () => { IMPM = null; modalImpresion(); },
-  imgShare: () => {
-    const m = IMPM; IMPM = null; modalImpresion();
-    (m.formato === 'ticket' ? dibujarTicketImg({...m, nombre: D.cfg.nombre}) : dibujarDoc(m)).toBlob(async blob => {
-      const f = new File([blob], m.archivo + '.png', {type: 'image/png'});
-      if (navigator.canShare && navigator.canShare({files: [f]})) {
-        try { await navigator.share({files: [f], title: m.titulo + ' ' + m.num}); return; } catch (e) { if (e && e.name === 'AbortError') return; }
-      }
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = m.archivo + '.png';
-      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      toast('Imagen descargada: búscala en tus descargas o fotos');
-    }, 'image/png');
-  },
-  recPT: id => imprimirPago(id, 'ticket'),
+  imgShare: () => { const m = IMPM; IMPM = null; modalImpresion(); compartirImagen(m); },
+  imgT: id => compartirImagen(modeloFactura(D.ventas.find(x => x.id === id), 'ticket')),
+  imgPT: id => compartirImagen(modeloPago(D.pagos.find(x => x.id === id), 'ticket')),
+  recPT: id => compartirImagen(modeloPago(D.pagos.find(x => x.id === id), 'ticket')),
   recPC: id => imprimirPago(id, 'carta'),
   nuevoP: () => { form = {nombre: '', cat: '', costo: '', precio: '', stock: '', min: 2}; render(); },
   editP: id => { form = {...D.productos.find(x => x.id === id)}; render(); },
@@ -694,7 +759,7 @@ vender,
     if (ya) { if (!ya.tel && t) { ya.tel = t; save(); render(); } return toast(ya.nombre + ' ya existe como cliente'); }
     D.clientes.push({id: uid(), nombre: n, tel: t}); save(); render();
   },
-  recT: id => imprimir(id, 'ticket'),
+  recT: id => compartirImagen(modeloFactura(D.ventas.find(x => x.id === id), 'ticket')),
   recC: id => imprimir(id, 'carta'),
   anular: id => {
     const v = D.ventas.find(x => x.id === id);
