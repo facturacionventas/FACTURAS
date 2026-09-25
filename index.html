@@ -334,7 +334,7 @@ const cabTicket = () => [tcen(D.cfg.nombre.slice(0, TW)), D.cfg.rnc && tcen('RNC
 const itemsHTML = v => `<table class="ft"><thead><tr><th style="width:9%">Cant.</th><th>Descripción</th><th class="r" style="width:20%">Precio</th><th class="r" style="width:20%">Importe</th></tr></thead>
 <tbody>${v.items.map(i => `<tr><td>${i.cant}</td><td>${esc(i.nombre)}</td><td class="r">${f2(i.precio)}</td><td class="r">${f2(i.cant * i.precio)}</td></tr>`).join('')}</tbody></table>`;
 const itemsTicket = v => v.items.flatMap(i => [...(i.nombre.match(/.{1,32}/g) || [i.nombre]), tlin(' ' + i.cant + ' x ' + f2(i.precio), f2(i.cant * i.precio))]);
-function lanzar(f, carta, ticket) {
+function lanzar(f, carta, ticket, modelo) {
   const b = document.body;
   b.classList.remove('pt', 'pc');
   if (f === 'carta') {
@@ -346,7 +346,16 @@ function lanzar(f, carta, ticket) {
     $('#pg').textContent = '@page{size:58mm auto;margin:0}';
     b.classList.add('pt');
   }
-  setTimeout(() => window.print(), 50);
+  let abrio = false;
+  const marca = () => { abrio = true; };
+  window.addEventListener('beforeprint', marca); window.addEventListener('afterprint', marca);
+  setTimeout(() => {
+    try { window.print(); } catch (e) {}
+    setTimeout(() => {
+      window.removeEventListener('beforeprint', marca); window.removeEventListener('afterprint', marca);
+      if (!abrio && modelo) { IMPM = modelo; modalImpresion(); }
+    }, 1500);
+  }, 50);
 }
 function imprimir(id, f) {
   f = f === 'carta' || f === 'ticket' ? f : fmt();
@@ -360,7 +369,12 @@ function imprimir(id, f) {
     tlin('Subtotal', f2(v.sub)), v.itbis && tlin('ITBIS', f2(v.itbis)), tlin('TOTAL', f2(v.total)), TL,
     v.estado === 'Cancelada' ? tcen('*** CANCELADA ***') : v.estado === 'Pagado' ? 'Pagado (' + v.metodo + ')' : 'A CREDITO, vence ' + fd(v.vence),
     tcen('Gracias por su compra'), tcen('Recibo no fiscal')];
-  lanzar(f, carta, ticket);
+  lanzar(f, carta, ticket, {
+    archivo: 'factura-' + v.num, titulo: 'FACTURA', num: v.num, fecha: fd(v.fecha), cancelada: v.estado === 'Cancelada', formato: f, ticket,
+    lineas: [['Cliente', (c ? c.nombre : 'Cliente general') + (c && c.tel ? '   Tel: ' + c.tel : '')]], items: v.items,
+    tots: [['Subtotal', R(v.sub)], ...(v.itbis ? [['ITBIS', R(v.itbis)]] : []), ['TOTAL', R(v.total)]],
+    pie: [est ? 'Estado: ' + est.replace(/&amp;/g, '&') : '', 'Gracias por su compra - Documento no fiscal'].filter(Boolean)
+  });
 }
 function imprimirPago(pid, f) {
   f = f === 'carta' || f === 'ticket' ? f : fmt();
@@ -371,7 +385,132 @@ function imprimirPago(pid, f) {
     + (v ? itemsHTML(v) : '') + `<table class="fs"><tr class="tot"><td>TOTAL PAGADO</td><td class="r">${R(p.monto)}</td></tr></table><p class="fp">Gracias por su pago &mdash; Documento no fiscal</p>`;
   const ticket = [...cabTicket(), tcen('RECIBO DE PAGO'), tlin(p.num, fd(p.fecha)), 'Cliente: ' + nombre, 'Factura: ' + p.fnum, 'Forma de pago: ' + p.metodo, TL,
     ...(v ? [...itemsTicket(v), TL] : []), tlin('TOTAL PAGADO', f2(p.monto)), TL, tcen('Gracias por su pago'), tcen('Recibo no fiscal')];
-  lanzar(f, carta, ticket);
+  lanzar(f, carta, ticket, {
+    archivo: 'recibo-' + p.num, titulo: 'RECIBO DE PAGO', num: p.num, fecha: fd(p.fecha) + (p.hora ? ' ' + p.hora : ''), cancelada: false, formato: f, ticket,
+    lineas: [['Recibimos de', nombre], ['Concepto', 'Pago de la factura ' + p.fnum + (v ? ' del ' + fd(v.fecha) : '')], ['Forma de pago', p.metodo]],
+    items: v ? v.items : [], tots: [['TOTAL PAGADO', R(p.monto)]], pie: ['Gracias por su pago - Documento no fiscal']
+  });
+}
+let IMPM = null;
+function modalImpresion() {
+  const m = $('#mdl');
+  if (!IMPM) { m.style.display = 'none'; m.innerHTML = ''; return; }
+  m.style.display = 'flex';
+  m.innerHTML = `<div class="bg-white rounded-2xl p-5 w-full max-w-sm space-y-3">
+<h2 class="font-bold text-lg">Esta app no abrió la impresión</h2>
+<p class="text-sm text-slate-600">En algunos teléfonos, la app de la pantalla de inicio no permite imprimir. Puedes enviar ${IMPM.titulo === 'FACTURA' ? 'la factura' : 'el recibo'} como imagen (WhatsApp, Fotos, o a la impresora desde ahí). Para imprimir directo, abre esta página desde el navegador (Chrome o Safari), no desde el ícono.</p>
+<button class="btn" data-a="imgShare">📤 Compartir como imagen</button><button class="btn2 w-full" data-a="imgNo">Cerrar</button></div>`;
+}
+function dibujarTicketImg(m) {
+  const PXW = 384, M = 14, W = PXW - M * 2;
+  const ctxTmp = document.createElement('canvas').getContext('2d');
+  const F = (px, b) => (b ? '700 ' : '400 ') + px + 'px Arial, Helvetica, sans-serif';
+  const mw = (t, f) => { ctxTmp.font = f; return ctxTmp.measureText(t).width; };
+  const wrap = (txt, f, max) => {
+    const out = []; let cur = '';
+    String(txt).split(/\s+/).forEach(w => {
+      while (mw(w, f) > max) { let k = w.length; while (k > 1 && mw(w.slice(0, k), f) > max) k--; if (cur) { out.push(cur); cur = ''; } out.push(w.slice(0, k)); w = w.slice(k); }
+      const c = cur ? cur + ' ' + w : w;
+      if (mw(c, f) > max && cur) { out.push(cur); cur = w; } else cur = c;
+    });
+    if (cur) out.push(cur); return out.length ? out : [''];
+  };
+  const ops = []; let y = M;
+  const put = (txt, x, fs, bold, al) => { ops.push([txt, x, y, fs, bold, al || 'left']); };
+  const line = px => { y += Math.round(px * 1.32); };
+  const rule = () => { y += 6; ops.push(['-', M, y, 'rule']); y += 10; };
+  put(m.nombre, PXW / 2, 24, true, 'center'); line(24); y += 6;
+  rule();
+  put(m.titulo, M, 19, true); put(m.num, PXW - M, 19, true, 'right'); line(19);
+  put(m.fecha, M, 15, false); line(15); y += 4;
+  rule();
+  if (m.cancelada) { put('*** CANCELADA ***', PXW / 2, 22, true, 'center'); line(22); y += 4; rule(); }
+  m.lineas.forEach(([k, v]) => {
+    wrap(k + ': ' + v, F(16), W).forEach(l => { put(l, M, 16, false); line(16); });
+  });
+  y += 4; rule();
+  (m.items || []).forEach(i => {
+    wrap(i.nombre, F(17, true), W).forEach(l => { put(l, M, 17, true); line(17); });
+    put(i.cant + ' x ' + f2(i.precio), M, 15, false); put(f2(i.cant * i.precio), PXW - M, 17, true, 'right'); line(17); y += 4;
+  });
+  rule();
+  (m.tots || []).forEach(([k, v], idx) => {
+    const ult = idx === m.tots.length - 1, fs = ult ? 22 : 16;
+    put(k, M, fs, ult); put(v, PXW - M, fs, ult, 'right'); line(fs); y += ult ? 6 : 2;
+  });
+  y += 4; rule();
+  (m.pie || []).forEach(l => {
+    wrap(l, F(15), W).forEach(t => { put(t, PXW / 2, 15, false, 'center'); line(15); });
+  });
+  y += 10;
+  const H = y;
+  const cv = document.createElement('canvas'); cv.width = PXW; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, PXW, H);
+  ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
+  ops.forEach(o => {
+    if (o[3] === 'rule') { ctx.fillRect(o[1], o[2], PXW - M * 2, 2); return; }
+    const [txt, x, ty, fs, bold, al] = o;
+    ctx.font = (bold ? '700 ' : '400 ') + fs + 'px Arial, Helvetica, sans-serif';
+    ctx.textAlign = al || 'left'; ctx.fillText(txt, x, ty);
+  });
+  return cv;
+}
+function dibujarDoc(m) {
+  const W = 800, M = 40, SC = 2;
+  const pasada = (ctx, dry) => {
+    const F = (px, b) => (b ? 'bold ' : '') + px + 'px Arial, Helvetica, sans-serif';
+    const mw = (txt, font) => { ctx.font = font; return ctx.measureText(txt).width; };
+    const t = (txt, x, y, font, al) => { if (dry) return; ctx.font = font; ctx.textAlign = al || 'left'; ctx.fillStyle = '#000'; ctx.fillText(txt, x, y); };
+    const rect = (x, y, w, h) => { if (dry) return; ctx.fillStyle = '#000'; ctx.fillRect(x, y, w, h); };
+    const wrap = (txt, font, max) => {
+      const out = []; let cur = '';
+      String(txt).split(/\s+/).forEach(w => {
+        while (mw(w, font) > max) { let k = w.length; while (k > 1 && mw(w.slice(0, k), font) > max) k--; if (cur) { out.push(cur); cur = ''; } out.push(w.slice(0, k)); w = w.slice(k); }
+        const c = cur ? cur + ' ' + w : w;
+        if (mw(c, font) > max && cur) { out.push(cur); cur = w; } else cur = c;
+      });
+      if (cur) out.push(cur); return out.length ? out : [''];
+    };
+    let y = 62;
+    t(D.cfg.nombre, M, y, F(30, 1));
+    t(m.titulo, W - M, y, F(26, 1), 'right'); t(m.num, W - M, y + 30, F(18, 1), 'right'); t('Fecha: ' + m.fecha, W - M, y + 54, F(16), 'right');
+    let ly = y + 26;
+    [D.cfg.rnc && 'RNC: ' + D.cfg.rnc, D.cfg.tel && 'Tel: ' + D.cfg.tel].filter(Boolean).forEach(x => { t(x, M, ly, F(16)); ly += 22; });
+    y = Math.max(ly, y + 70) + 6; rect(M, y, W - 2 * M, 2); y += 36;
+    if (m.cancelada) { t('CANCELADA', W / 2, y + 10, F(34, 1), 'center'); y += 56; }
+    m.lineas.forEach(([k, v]) => {
+      const kw = mw(k + ':  ', F(17, 1)); t(k + ':', M, y, F(17, 1));
+      wrap(v, F(17), W - 2 * M - kw).forEach((l, i) => { t(l, M + kw, y, F(17)); y += 24; if (i) y += 0; });
+    });
+    y += 8;
+    if (m.items && m.items.length) {
+      const xC = M + 4, xD = M + 70, xP = W - M - 130, xI = W - M;
+      t('CANT.', xC, y, F(14, 1)); t('DESCRIPCIÓN', xD, y, F(14, 1)); t('PRECIO', xP, y, F(14, 1), 'right'); t('IMPORTE', xI, y, F(14, 1), 'right');
+      y += 10; rect(M, y, W - 2 * M, 2); y += 28;
+      m.items.forEach(i => {
+        const ls = wrap(i.nombre, F(17), xP - 110 - xD);
+        t(String(i.cant), xC, y, F(17)); t(f2(i.precio), xP, y, F(17), 'right'); t(f2(i.cant * i.precio), xI, y, F(17), 'right');
+        ls.forEach((l, k) => { t(l, xD, y + k * 22, F(17)); });
+        y += (ls.length - 1) * 22 + 12; rect(M, y, W - 2 * M, 1); y += 26;
+      });
+    }
+    y += 6;
+    m.tots.forEach(([k, v], idx) => {
+      const ult = idx === m.tots.length - 1;
+      if (ult) { rect(W - M - 330, y - 22, 330, 2); y += 10; }
+      t(k, W - M - 320, y, F(ult ? 22 : 18, ult)); t(v, W - M, y, F(ult ? 22 : 18, ult), 'right'); y += ult ? 36 : 30;
+    });
+    y += 14;
+    m.pie.forEach((l, i) => { t(l, i === 0 && m.pie.length > 1 ? M : W / 2, y, F(i === 0 && m.pie.length > 1 ? 18 : 15, i === 0 && m.pie.length > 1), i === 0 && m.pie.length > 1 ? 'left' : 'center'); y += 30; });
+    return y + 20;
+  };
+  const tmp = document.createElement('canvas').getContext('2d');
+  const H = Math.ceil(pasada(tmp, true));
+  const cv = document.createElement('canvas'); cv.width = W * SC; cv.height = H * SC;
+  const ctx = cv.getContext('2d'); ctx.scale(SC, SC); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  pasada(ctx, false);
+  return cv;
 }
 let PG = null;
 function modalPago() {
@@ -507,6 +646,19 @@ vender,
     v.estado = 'Pagado'; v.pagadoEl = hoy(); v.metodo = PG.metodo; v.pagoId = pago.id;
     save(); PG = null; modalPago(); render(); toast('Pago registrado: ' + pago.num);
     if (confirm('¿Imprimir el recibo de pago (' + (fmt() === 'carta' ? 'tamaño carta' : 'ticket 58 mm') + ')?')) imprimirPago(pago.id, fmt());
+  },
+  imgNo: () => { IMPM = null; modalImpresion(); },
+  imgShare: () => {
+    const m = IMPM; IMPM = null; modalImpresion();
+    (m.formato === 'ticket' ? dibujarTicketImg({...m, nombre: D.cfg.nombre}) : dibujarDoc(m)).toBlob(async blob => {
+      const f = new File([blob], m.archivo + '.png', {type: 'image/png'});
+      if (navigator.canShare && navigator.canShare({files: [f]})) {
+        try { await navigator.share({files: [f], title: m.titulo + ' ' + m.num}); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+      }
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = m.archivo + '.png';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      toast('Imagen descargada: búscala en tus descargas o fotos');
+    }, 'image/png');
   },
   recPT: id => imprimirPago(id, 'ticket'),
   recPC: id => imprimirPago(id, 'carta'),
